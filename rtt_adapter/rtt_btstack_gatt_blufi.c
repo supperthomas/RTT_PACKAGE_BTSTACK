@@ -17,8 +17,9 @@
 
 #include "rtt_btstack_gatt_blufi.h"
 #include "btstack.h"
+#include "rtthread.h"
 
-#define HEARTBEAT_PERIOD_MS 5000
+#define HEARTBEAT_PERIOD_MS 1000
 
 static int  le_notification_enabled;
 static btstack_timer_source_t heartbeat;
@@ -94,7 +95,7 @@ static int  counter = 0;
 static char counter_string[1024];
 static int  counter_string_len;
 static uint32_t send_buffer_index = 0;
-static uint8_t send_buffer_complete= 0;
+static uint8_t send_buffer_complete= 1;
 #define GATT_SEND_MAX_SIZE 20
 
 #define BLUFI_RECV_BUFF_SIZE  200
@@ -131,26 +132,47 @@ uint8_t bsal_blufi_push_data(struct basl_blufi_recv_data *blufi_data, uint8_t le
     return 0;
 }
 
+static int bt_stack_blufi_send(uint8_t *string, uint32_t length)
+{
+    memcpy(counter_string, string, length);
+    counter_string_len = length;
+    if(le_notification_enabled)
+    {
+        printf("\r\n===start send string====\r\n");
+        send_buffer_complete = 0;
+        send_buffer_index = 0;
+    }
+    else {
+        printf("\r\n===le_notification_enabled:%d can't send====\r\n",le_notification_enabled);
+        return -1;
+    }
+    return 0;
+}
 
-static void beat(void){
-    counter++;
+void bt_send_api(void){
     uint8_t wifi_status = 1;
     uint8_t ip_address[4]={192,168,1,1};
+    char temp_string[100] ={0};
+    uint32_t temp_length = 0;
    // counter_string_len = sprintf(counter_string, "{wifi:'%s'}", wifi_status?"on":"off");
+    temp_length = sprintf(temp_string, "{wifi:'%s', url:' http://%d.%d.%d.%d/index.html'}", wifi_status?"on":"off",ip_address[0],ip_address[1],ip_address[2],ip_address[3]);
+    printf("\r\n======counter_string_len:%d======\r\n",temp_length);
 
-    counter_string_len = sprintf(counter_string, "{wifi:'%s', url:' http://%d.%d.%d.%d/index.html'}", wifi_status?"on":"off",ip_address[0],ip_address[1],ip_address[2],ip_address[3]);
-    printf("\r\n======counter_string_len:%d======\r\n",counter_string_len);
-    puts(counter_string);
+    bt_stack_blufi_send(temp_string, temp_length);
 }
+
+MSH_CMD_EXPORT(bt_send_api, send data);
 
 static void heartbeat_handler(struct btstack_timer_source *ts){
     if(send_buffer_complete == 1)
     {
         //tx complete no need
-         return;
+        //printf("\r\n === tx complete===\r\n ");
+        btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
+        btstack_run_loop_add_timer(ts);
+        return;
     }
-    if (le_notification_enabled) {
-        beat();
+    if ((le_notification_enabled)&&(counter_string_len!=0)) {
         att_server_request_can_send_now_event(con_handle);
     }
 
@@ -219,12 +241,12 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 // @param offset defines start of attribute value
 static uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size){
 //    UNUSED(connection_handle);
-//    uint8_t string[]={192,168,0,1};
+    uint8_t string[]={192,168,0,1};
         printf("\r\n read the att %x, %x, offset:%x,buffer:%p, buffer_size:%x\r\n",connection_handle, att_handle, offset, buffer, buffer_size);
 
-//        if (att_handle == ATT_CHARACTERISTIC_FF03_01_VALUE_HANDLE){
-//            return att_read_callback_handle_blob((const uint8_t *)string, 4, offset, buffer, buffer_size);
-//        }
+       if (att_handle == ATT_CHARACTERISTIC_FF01_01_VALUE_HANDLE){
+            return att_read_callback_handle_blob((const uint8_t *)string, 4, offset, buffer, buffer_size);
+        }
     return 0;
 }
 /* LISTING_END */
@@ -252,13 +274,13 @@ static int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_h
     }
     if(att_handle == ATT_CHARACTERISTIC_FF01_01_VALUE_HANDLE)
     {
-	    printf("\r\n recv data: %s length :%d\r\n", buffer, buffer_size);
-	    uint8_t ret =  bsal_blufi_push_data(&blufi_data, buffer_size, buffer);
-	    if (ret == 0xff)
-	    {
-		    //the data is ready
-		    printf("\r\n BLUFI: THE RECEIVE DATA IS :%s \r\n", blufi_data.buf);
-	    }
+        printf("\r\n recv data: %s length :%d\r\n", buffer, buffer_size);
+        uint8_t ret =  bsal_blufi_push_data(&blufi_data, buffer_size, buffer);
+        if (ret == 0xff)
+        {
+            //the data is ready
+            printf("\r\n BLUFI: THE RECEIVE DATA IS :%s \r\n", blufi_data.buf);
+        }
     }
 
 

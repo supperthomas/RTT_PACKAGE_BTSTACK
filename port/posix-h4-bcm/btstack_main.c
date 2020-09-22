@@ -215,6 +215,8 @@ int bt_stack_main(int argc, const char * argv[]){
     // phase #2 start main app
     btstack_chipset_bcm_download_firmware(uart_driver, transport_config.baudrate_main, &phase2);
 
+    bd_addr_t own_address = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
+    hci_set_bd_addr(own_address);
     // go
     btstack_run_loop_execute();    
     return 0;
