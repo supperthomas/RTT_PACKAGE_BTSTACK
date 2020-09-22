@@ -16,5 +16,5 @@
 
    7.连上该设备之后，打开notification，可以看到gatt_counter计数器在增加。
 
-   ![image-20200829060523161](doc\figure\readme_2.jpg)
+   ![image-20200829060523161](doc\figure\readme_2.png)
 
