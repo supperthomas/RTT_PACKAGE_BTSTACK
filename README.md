@@ -10,11 +10,11 @@
 
 5. 看到如下的log，说明蓝牙已经起来了
 
-   ![image-20200829060523161](doc\figure\readme_1.png)
+   ![image-20200829060523161](doc\figure\readme_1.jpg)
 
    6.此时用手机nrf connect软件可以搜索到该设备。
 
    7.连上该设备之后，打开notification，可以看到gatt_counter计数器在增加。
 
-   <img src="doc\figure\readme_2.png" alt="image-20200829065000311" style="zoom:50%;" />
+   ![image-20200829060523161](doc\figure\readme_2.jpg)
 
