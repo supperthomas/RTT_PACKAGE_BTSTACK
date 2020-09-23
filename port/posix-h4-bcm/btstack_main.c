@@ -184,7 +184,7 @@ int bt_stack_main(int argc, const char * argv[]){
     uart_config.device_name = transport_config.device_name;
     uart_driver->init(&uart_config);
 
-#define BT_AP6212_PIN    GET_PIN(E, 1)
+#define BT_AP6212_PIN    GET_PIN(B, 1)
      rt_pin_mode(BT_AP6212_PIN, PIN_MODE_OUTPUT);
      
      rt_pin_write(BT_AP6212_PIN, PIN_LOW);
