@@ -120,7 +120,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
         case BTSTACK_EVENT_STATE:
             if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) break;
             gap_local_bd_addr(addr);
-            printf("BTstack up and running at %s\n",  bd_addr_to_str(addr));
+            printf("BTstack up and running at %s \r\n",  bd_addr_to_str(addr));
             // setup TLV
 //            strcpy(tlv_db_path, TLV_DB_PATH_PREFIX);
 //            strcat(tlv_db_path, bd_addr_to_str(addr));
