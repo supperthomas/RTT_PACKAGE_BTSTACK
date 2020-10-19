@@ -232,7 +232,7 @@ void bt_stack_port_main(void)
                             5, 5);
        if (tid1 != RT_NULL)
             rt_thread_startup(tid1);
-        return RT_EOK;
+        return;
 }
 MSH_CMD_EXPORT(bt_stack_port_main, btstack start);
 
