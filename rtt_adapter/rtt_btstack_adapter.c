@@ -74,13 +74,14 @@ static int uart_sample(int argc, char *argv[])
     {
         rt_strncpy(uart_name, SAMPLE_UART_NAME, RT_NAME_MAX);
     }
-#define BT_AP6212_PIN    GET_PIN(E, 1)
-     rt_pin_mode(BT_AP6212_PIN, PIN_MODE_OUTPUT);
+#define BT_AP6212_PIN GET_PIN(I, 11)
+    rt_pin_mode(BT_AP6212_PIN, PIN_MODE_OUTPUT);
 
-     rt_pin_write(BT_AP6212_PIN, PIN_LOW);
-     rt_thread_mdelay(1000);
-     rt_pin_write(BT_AP6212_PIN, PIN_HIGH);
-     rt_thread_mdelay(1000);
+    rt_pin_write(BT_AP6212_PIN, PIN_LOW);
+    HAL_Delay(1000);
+    rt_pin_write(BT_AP6212_PIN, PIN_HIGH);
+    HAL_Delay(1000);
+    rt_kprintf("\r\n =====helloworld=====\r\n ");
     /* ?????????? */
     if(serial == NULL)
     {
