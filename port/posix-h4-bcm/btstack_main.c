@@ -118,6 +118,7 @@ void hal_led_toggle(void)
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size)
 {
     bd_addr_t addr;
+
     if (packet_type != HCI_EVENT_PACKET)
         return;
     switch (hci_event_packet_get_type(packet))
