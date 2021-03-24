@@ -40,11 +40,18 @@ src/ble/att_dispatch.c
 src/ble/att_db.c
 
 src/ble/gatt-service/battery_service_server.c
+src/ble/gatt-service/device_information_service_server.c
 
 port/posix-h4-bcm/btstack_main.c
 rtt_adapter/rtt_btstack_adapter.c
 
 src/btstack_crypto.c
+
+
+
+
+
+
 ''')
 
 
@@ -57,6 +64,77 @@ path += [cwd + '/port/posix-h4-bcm']
 path += [cwd + '/rtt_adapter']
 path += [cwd + '/src/ble/gatt-service']
 
+#CLASS
+if GetDepend(['PKG_BTSTACK_CLASS']):
+     path += [cwd + '/src/class']
+     src += Split("""
+        src/classic/sdp_util.c
+        src/classic/gatt_sdp.c
+        src/classic/spp_server.c
+        src/classic/rfcomm.c
+        src/classic/bnep.c
+        src/classic/sdp_server.c
+        src/classic/device_id_server.c
+        """)
+
+if GetDepend(['PKG_BTSTACK_SDP_CLIENT']):
+    src += Split("""
+		src/classic/sdp_client.c
+		src/classic/sdp_client_rfcomm.c
+        """)
+
+
+#encode decode
+if GetDepend(['PKG_BTSTACK_AUDIO']):
+    src += Split("""
+        src/btstack_audio.c
+        """)
+
+
+
+if GetDepend(['PKG_BTSTACK_SBC_ENC']):
+     path += [cwd + '/3rd-party/bluedroid/encoder/include']
+     src += Split("""
+        3rd-party/bluedroid/encoder/srce/sbc_analysis.c          
+		3rd-party/bluedroid/encoder/srce/sbc_dct.c               
+		3rd-party/bluedroid/encoder/srce/sbc_dct_coeffs.c        
+		3rd-party/bluedroid/encoder/srce/sbc_enc_bit_alloc_mono.c
+		3rd-party/bluedroid/encoder/srce/sbc_enc_bit_alloc_ste.c 
+		3rd-party/bluedroid/encoder/srce/sbc_enc_coeffs.c        
+		3rd-party/bluedroid/encoder/srce/sbc_encoder.c           
+		3rd-party/bluedroid/encoder/srce/sbc_packing.c  
+        src/classic/btstack_sbc_encoder_bluedroid.c
+        src/classic/hfp_msbc.c
+        """)
+        
+if GetDepend(['PKG_BTSTACK_SBC_DEC']):
+     path += [cwd + '/3rd-party/bluedroid/decoder/include']
+     src += Split("""
+        3rd-party/bluedroid/decoder/srce/alloc.c
+        3rd-party/bluedroid/decoder/srce/bitalloc.c
+        3rd-party/bluedroid/decoder/srce/bitalloc-sbc.c
+        3rd-party/bluedroid/decoder/srce/bitstream-decode.c
+        3rd-party/bluedroid/decoder/srce/decoder-oina.c
+        3rd-party/bluedroid/decoder/srce/decoder-private.c
+        3rd-party/bluedroid/decoder/srce/decoder-sbc.c
+        3rd-party/bluedroid/decoder/srce/dequant.c
+        3rd-party/bluedroid/decoder/srce/framing.c
+        3rd-party/bluedroid/decoder/srce/framing-sbc.c
+        3rd-party/bluedroid/decoder/srce/oi_codec_version.c
+        3rd-party/bluedroid/decoder/srce/synthesis-sbc.c
+        3rd-party/bluedroid/decoder/srce/synthesis-dct8.c
+        3rd-party/bluedroid/decoder/srce/synthesis-8-generated.c
+        src/classic/btstack_sbc_plc.c
+        src/classic/btstack_sbc_decoder_bluedroid.c
+        """)        
+#CVSD
+if GetDepend(['PKG_BTSTACK_CVSD']):
+     src += Split("""
+        src/classic/btstack_cvsd_plc.c
+        """)
+        
+        
+        
 #MESH
 if GetDepend(['PKG_BTSTACK_MESH']):
      path += [cwd + '/src/mesh']
@@ -101,6 +179,7 @@ if GetDepend(['PKG_BTSTACK_MESH']):
 
 #example
 
+#===================ble service==============
 if GetDepend('PKG_BTSTACK_SAMPLE_DISABLE') == False:
      path += [cwd + '/example/inc']
 
@@ -136,6 +215,13 @@ if GetDepend(['PKG_BTSTACK_SAMPLE_NORDIC_LE_COUNTER']):
         example/nordic_spp_le_counter.c
         src/ble/gatt-service/nordic_spp_service_server.c
         """)  
+        
+if GetDepend(['PKG_BTSTACK_SAMPLE_UBLOX_LE_COUNTER']):
+     example_src = Split("""
+        example/ublox_spp_le_counter.c
+        src/ble/gatt-service/device_information_service_server
+        src/ble/gatt-service/ublox_spp_service_server.c
+        """)  
 
 if GetDepend(['PKG_BTSTACK_SAMPLE_ATT_DELAYED_RESPONSE']):
      example_src = Split("""
@@ -159,7 +245,21 @@ if GetDepend(['PKG_BTSTACK_SAMPLE_ANCS_CLIENT_DEMO']):
         src/ble/ancs_client.c
         src/ble/gatt_client.c
         """)   
+#==============hogp ble service=============
+
+if GetDepend(['PKG_BTSTACK_SAMPLE_HOGP_KEYBOARD_DEMO']):
+     example_src = Split("""
+        example/hog_keyboard_demo.c
+        src/ble/gatt-service/hids_device.c
+        src/btstack_ring_buffer.c
+        """)   
         
+if GetDepend(['PKG_BTSTACK_SAMPLE_HOGP_MOUSER_DEMO']):
+     example_src = Split("""
+        example/hog_mouse_demo.c
+        src/ble/gatt-service/hids_device.c
+        """)        
+#===========mesh=========================       
 if GetDepend(['PKG_BTSTACK_SAMPLE_MESH_DEMO']):
      example_src = Split("""
         example/mesh_node_demo.c
@@ -170,6 +270,71 @@ if GetDepend(['PKG_BTSTACK_SAMPLE_TMALL_MESH_DEMO']):
         rtt_adapter/mesh_node_demo_tmall.c
         """)        
           
+
+#======dual mode==============
+if GetDepend(['PKG_BTSTACK_SAMPLE_SPP_GATT_COUNTER_DEMO']):
+     example_src = Split("""
+        src/ble/gatt-service/device_information_service_server.c
+        src/ble/gatt-service/nordic_spp_service_server.c
+        example/spp_and_gatt_counter.c
+        """)
+        
+if GetDepend(['PKG_BTSTACK_SAMPLE_SPP_GATT_STREAMER_DEMO']):
+     example_src = Split("""
+        src/ble/gatt-service/nordic_spp_service_server.c
+        example/nordic_spp_le_streamer.c
+        """)
+#================CLASSIC SPP==========
+if GetDepend(['PKG_BTSTACK_SAMPLE_SPP_COUNTER_DEMO']):
+     example_src = Split("""
+        example/spp_counter.c
+        """)
+if GetDepend(['PKG_BTSTACK_SAMPLE_SPP_STREAMER_DEMO']):
+     example_src = Split("""
+        example/spp_streamer.c
+        """)
+        
+#================CLASSIC HFP==========
+if GetDepend(['PKG_BTSTACK_SAMPLE_HFP_HF_DEMO']):
+     example_src = Split("""
+        platform/posix/wav_util.c
+        example/sco_demo_util.c
+        src/btstack_ring_buffer.c
+        src/classic/hfp.c
+        src/classic/hfp_hf.c
+        example/hfp_hf_demo.c
+        """)
+        
+if GetDepend(['PKG_BTSTACK_SAMPLE_HFP_AG_DEMO']):
+     example_src = Split("""
+        platform/posix/wav_util.c
+        example/sco_demo_util.c
+        src/btstack_ring_buffer.c
+        src/classic/hfp.c
+        src/classic/hfp_gsm_model.c
+        src/classic/hfp_ag.c
+        example/hfp_ag_demo.c
+        """)
+        
+if GetDepend(['PKG_BTSTACK_SAMPLE_HSP_HS_DEMO']):
+     example_src = Split("""
+        platform/posix/wav_util.c
+        example/sco_demo_util.c
+        src/btstack_ring_buffer.c
+        src/classic/hsp_hs.c
+        example/hsp_hs_demo.c
+        """)
+        
+if GetDepend(['PKG_BTSTACK_SAMPLE_HSP_AG_DEMO']):
+     example_src = Split("""
+        platform/posix/wav_util.c
+        example/sco_demo_util.c
+        src/btstack_ring_buffer.c
+        src/classic/hsp_ag.c
+        example/hsp_ag_demo.c
+        """)
+        
+        
 LOCAL_CCFLAGS = ''
 if rtconfig.CROSS_TOOL == 'keil':
     LOCAL_CCFLAGS += ' --gnu'
