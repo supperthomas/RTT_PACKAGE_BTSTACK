@@ -65,7 +65,7 @@ path += [cwd + '/rtt_adapter']
 path += [cwd + '/src/ble/gatt-service']
 
 #CLASS
-if GetDepend(['PKG_BTSTACK_CLASS']):
+if GetDepend(['ENABLE_CLASSIC']):
      path += [cwd + '/src/class']
      src += Split("""
         src/classic/sdp_util.c
@@ -136,7 +136,7 @@ if GetDepend(['PKG_BTSTACK_CVSD']):
         
         
 #MESH
-if GetDepend(['PKG_BTSTACK_MESH']):
+if GetDepend(['ENABLE_MESH']):
      path += [cwd + '/src/mesh']
      src += Split("""
 			src/mesh/adv_bearer.c
