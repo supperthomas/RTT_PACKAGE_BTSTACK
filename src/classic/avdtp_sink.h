@@ -35,12 +35,11 @@
  *
  */
 
-/*
- * avdtp_sink.h
- * 
- * Audio/Video Distribution Transport Protocol (AVDTP) Sink
+/**
+ * @title AVDTP Sink
  *
- * AVDTP Sink is a device that accepts streamed media data.  
+ * Audio/Video Distribution Transport Protocol (AVDTP) Sink is a device that accepts streamed media data.  
+ *
  */
 
 #ifndef AVDTP_SINK_H
@@ -64,6 +63,12 @@ void avdtp_sink_init(void);
 // returns avdtp_stream_endpoint_t *
 avdtp_stream_endpoint_t * avdtp_sink_create_stream_endpoint(avdtp_sep_type_t sep_type, avdtp_media_type_t media_type);
 
+/**
+ *  @brief Unregister stream endpoint and free it's memory
+ *  @param stream_endpoint created by avdtp_sink_create_stream_endpoint
+ */
+void avdtp_sink_finalize_stream_endpoint(avdtp_stream_endpoint_t * stream_endpoint);
+
 void avdtp_sink_register_media_transport_category(uint8_t seid);
 void avdtp_sink_register_reporting_category(uint8_t seid);
 void avdtp_sink_register_delay_reporting_category(uint8_t seid);
@@ -71,7 +76,7 @@ void avdtp_sink_register_recovery_category(uint8_t seid, uint8_t maximum_recover
 void avdtp_sink_register_header_compression_category(uint8_t seid, uint8_t back_ch, uint8_t media, uint8_t recovery);
 void avdtp_sink_register_multiplexing_category(uint8_t seid, uint8_t fragmentation);
 
-void avdtp_sink_register_media_codec_category(uint8_t seid, avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, uint8_t * media_codec_info, uint16_t media_codec_info_len);
+void avdtp_sink_register_media_codec_category(uint8_t seid, avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, const uint8_t *media_codec_info, uint16_t media_codec_info_len);
 void avdtp_sink_register_content_protection_category(uint8_t seid, uint16_t cp_type, const uint8_t * cp_type_value, uint8_t cp_type_value_len);
 
 /**
@@ -170,6 +175,11 @@ uint8_t avdtp_sink_suspend(uint16_t avdtp_cid, uint8_t local_seid);
  * @param delay_100us
  */
 uint8_t avdtp_sink_delay_report(uint16_t avdtp_cid, uint8_t local_seid, uint16_t delay_100us);
+
+/**
+ * @brief De-Init AVDTP Sink.
+ */
+void avdtp_sink_deinit(void);
 
 // AVDTP_SI_DELAYREPORT
 

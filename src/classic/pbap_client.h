@@ -35,6 +35,11 @@
  *
  */
 
+/**
+ * @title PBAP Client
+ *
+ */
+
 #ifndef PBAP_CLIENT_H
 #define PBAP_CLIENT_H
 
@@ -221,6 +226,10 @@ uint8_t pbap_set_flow_control_mode(uint16_t pbap_cid, int enable);
  */
 uint8_t pbap_next_packet(uint16_t pbap_cid);
 
+/**
+ * @brief De-Init PBAP Client
+ */
+void pbap_client_deinit(void);
 
 /* API_END */
 

@@ -40,11 +40,51 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "btstack.h"
-#include "avdtp.h"
-#include "avdtp_util.h"
+#include "classic/avdtp.h"
+#include "classic/avdtp_util.h"
+
+#include "btstack_debug.h"
+#include "btstack_util.h"
+#include "l2cap.h"
 
 #define MAX_MEDIA_CODEC_INFORMATION_LENGTH 100
+
+
+/*
+
+ List of AVDTP_SUBEVENTs sorted by packet handler
+
+
+Sink + Source:
+- AVDTP_SUBEVENT_SIGNALING_CONNECTION_ESTABLISHED
+- AVDTP_SUBEVENT_SIGNALING_CONNECTION_RELEASED
+- AVDTP_SUBEVENT_SIGNALING_SEP_FOUND
+- AVDTP_SUBEVENT_SIGNALING_ACCEPT
+- AVDTP_SUBEVENT_SIGNALING_REJECT
+- AVDTP_SUBEVENT_SIGNALING_GENERAL_REJECT
+- AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_SBC_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_MEDIA_TRANSPORT_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_REPORTING_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_RECOVERY_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_CONTENT_PROTECTION_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_MULTIPLEXING_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_DELAY_REPORTING_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_HEADER_COMPRESSION_CAPABILITY
+- AVDTP_SUBEVENT_SIGNALING_CAPABILITIES_DONE
+- AVDTP_SUBEVENT_SIGNALING_SEP_DICOVERY_DONE
+
+Source:
+ - AVDTP_SUBEVENT_SIGNALING_DELAY_REPORT
+
+Sink or Source based on SEP Type:
+- AVDTP_SUBEVENT_STREAMING_CONNECTION_ESTABLISHED
+- AVDTP_SUBEVENT_STREAMING_CONNECTION_RELEASED
+- AVDTP_SUBEVENT_STREAMING_CAN_SEND_MEDIA_PACKET_NOW
+- AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_SBC_CONFIGURATION
+- AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CONFIGURATION
+
+*/
 
 static const char * avdtp_si_name[] = {
     "ERROR",
@@ -72,25 +112,29 @@ void avdtp_reset_stream_endpoint(avdtp_stream_endpoint_t * stream_endpoint){
     stream_endpoint->l2cap_media_cid = 0;
     stream_endpoint->l2cap_reporting_cid = 0;
     stream_endpoint->l2cap_recovery_cid = 0;
-
-    stream_endpoint->connection = NULL;
+    
     stream_endpoint->state = AVDTP_STREAM_ENDPOINT_IDLE;
     stream_endpoint->acceptor_config_state = AVDTP_ACCEPTOR_STREAM_CONFIG_IDLE;
     stream_endpoint->initiator_config_state = AVDTP_INITIATOR_STREAM_CONFIG_IDLE;
 
+    stream_endpoint->connection = NULL;
+
     stream_endpoint->sep.in_use = 0;
     memset(&stream_endpoint->remote_sep, 0, sizeof(avdtp_sep_t));
-    // memset(&stream_endpoint->remote_capabilities, 0, sizeof(avdtp_capabilities_t));
-    // memset(&stream_endpoint->remote_configuration, 0, sizeof(avdtp_capabilities_t));
-    
+
     stream_endpoint->remote_capabilities_bitmap = 0;
+    memset(&stream_endpoint->remote_capabilities, 0, sizeof(avdtp_capabilities_t));
     stream_endpoint->remote_configuration_bitmap = 0;
+    memset(&stream_endpoint->remote_configuration, 0, sizeof(avdtp_capabilities_t));
+    
+    // temporary SBC config used by A2DP Source
+    memset(stream_endpoint->media_codec_info, 0, 8);
 
     stream_endpoint->media_disconnect = 0;
     stream_endpoint->media_connect = 0;
     stream_endpoint->start_stream = 0;
-    stream_endpoint->stop_stream = 0;
-    stream_endpoint->send_stream = 0;
+    stream_endpoint->close_stream = 0;
+    stream_endpoint->request_can_send_now = false;
     stream_endpoint->abort_stream = 0;
     stream_endpoint->suspend_stream = 0;
     stream_endpoint->sequence_number = 0;
@@ -142,6 +186,9 @@ int avdtp_read_signaling_header(avdtp_signaling_packet_t * signaling_header, uin
             }
             signaling_header->num_packets--;
             break;
+        default:
+            btstack_assert(false);
+            break;
     }
     signaling_header->signal_identifier = (avdtp_signal_identifier_t)(packet[pos++] & 0x3f);
     return pos;
@@ -173,6 +220,7 @@ int avdtp_pack_service_capabilities(uint8_t *buffer, int size, avdtp_capabilitie
             pos += 2;
             (void)memcpy(buffer + pos, caps.content_protection.cp_type_value,
                          caps.content_protection.cp_type_value_len);
+            pos += caps.content_protection.cp_type_value_len;
             break;
         case AVDTP_HEADER_COMPRESSION:
             buffer[pos++] = (caps.header_compression.back_ch << 7) | (caps.header_compression.media << 6) | (caps.header_compression.recovery << 5);
@@ -206,7 +254,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
         ((category == AVDTP_SERVICE_CATEGORY_INVALID_FF) && (signal_identifier == AVDTP_SI_RECONFIGURE))){
         log_info("    ERROR: BAD SERVICE CATEGORY %d\n", category);
         connection->reject_service_category = category;
-        connection->error_code = BAD_SERV_CATEGORY;
+        connection->error_code = AVDTP_ERROR_CODE_BAD_SERV_CATEGORY;
         return 1;
     }
 
@@ -214,7 +262,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
         if ( (category != AVDTP_CONTENT_PROTECTION) && (category != AVDTP_MEDIA_CODEC)){
             log_info("    ERROR: REJECT CATEGORY, INVALID_CAPABILITIES\n");
             connection->reject_service_category = category;
-            connection->error_code = INVALID_CAPABILITIES;
+            connection->error_code = AVDTP_ERROR_CODE_INVALID_CAPABILITIES;
             return 1;
         }
     }
@@ -224,7 +272,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
             if (cap_len != 0){
                 log_info("    ERROR: REJECT CATEGORY, BAD_MEDIA_TRANSPORT\n");
                 connection->reject_service_category = category;
-                connection->error_code = BAD_MEDIA_TRANSPORT_FORMAT;
+                connection->error_code = AVDTP_ERROR_CODE_BAD_MEDIA_TRANSPORT_FORMAT;
                 return 1;
             }
             break;
@@ -233,7 +281,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
             if (cap_len != 0){
                 log_info("    ERROR: REJECT CATEGORY, BAD_LENGTH\n");
                 connection->reject_service_category = category;
-                connection->error_code = BAD_LENGTH;
+                connection->error_code = AVDTP_ERROR_CODE_BAD_LENGTH;
                 return 1;
             }
             break;
@@ -241,7 +289,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
             if (cap_len != 3){
                 log_info("    ERROR: REJECT CATEGORY, BAD_MEDIA_TRANSPORT\n");
                 connection->reject_service_category = category;
-                connection->error_code = BAD_RECOVERY_FORMAT;
+                connection->error_code = AVDTP_ERROR_CODE_BAD_RECOVERY_FORMAT;
                 return 1;
             }           
             break;
@@ -249,7 +297,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
             if (cap_len < 2){
                 log_info("    ERROR: REJECT CATEGORY, BAD_CP_FORMAT\n");
                 connection->reject_service_category = category;
-                connection->error_code = BAD_CP_FORMAT;
+                connection->error_code = AVDTP_ERROR_CODE_BAD_CP_FORMAT;
                 return 1;
             }
             break;
@@ -258,7 +306,7 @@ static int avdtp_unpack_service_capabilities_has_errors(avdtp_connection_t * con
             if (cap_len != 1){
                 log_info("    ERROR: REJECT CATEGORY, BAD_HEADER_COMPRESSION\n");
                 connection->reject_service_category = category;
-                connection->error_code = BAD_RECOVERY_FORMAT;
+                connection->error_code = AVDTP_ERROR_CODE_BAD_RECOVERY_FORMAT;
                 return 1;
             }           
             break;
@@ -288,7 +336,7 @@ uint16_t avdtp_unpack_service_capabilities(avdtp_connection_t * connection, avdt
 
         if (cap_len > to_process){
             connection->reject_service_category = category;
-            connection->error_code = BAD_LENGTH;
+            connection->error_code = AVDTP_ERROR_CODE_BAD_LENGTH;
             return 0;
         }
 
@@ -444,8 +492,8 @@ int avdtp_signaling_create_fragment(uint16_t cid, avdtp_signaling_packet_t * sig
 }
 
 
-void avdtp_signaling_emit_connection_established(uint16_t avdtp_cid, bd_addr_t addr, uint8_t status) {
-    uint8_t event[12];
+void avdtp_signaling_emit_connection_established(uint16_t avdtp_cid, bd_addr_t addr, hci_con_handle_t con_handle, uint8_t status) {
+    uint8_t event[14];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
@@ -454,6 +502,8 @@ void avdtp_signaling_emit_connection_established(uint16_t avdtp_cid, bd_addr_t a
     pos += 2;
     reverse_bd_addr(addr,&event[pos]);
     pos += 6;
+    little_endian_store_16(event, pos, con_handle);
+    pos += 2;
     event[pos++] = status;
     avdtp_emit_sink_and_source(event, pos);
 }
@@ -509,6 +559,22 @@ void avdtp_signaling_emit_accept(uint16_t avdtp_cid, uint8_t local_seid, avdtp_s
     avdtp_emit_sink_and_source(event, pos);
 }
 
+void avdtp_signaling_emit_accept_for_stream_endpoint(avdtp_stream_endpoint_t * stream_endpoint, uint8_t local_seid,  avdtp_signal_identifier_t identifier, bool is_initiator){
+    uint8_t event[8];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_ACCEPT;
+    little_endian_store_16(event, pos, stream_endpoint->connection->avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+    event[pos++] = is_initiator ? 1 : 0;
+    event[pos++] = identifier;
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
 void avdtp_signaling_emit_reject(uint16_t avdtp_cid, uint8_t local_seid, avdtp_signal_identifier_t identifier, bool is_initiator) {
     uint8_t event[8];
     int pos = 0;
@@ -537,68 +603,175 @@ void avdtp_signaling_emit_general_reject(uint16_t avdtp_cid, uint8_t local_seid,
     avdtp_emit_sink_and_source(event, pos);
 }
 
-static void avdtp_signaling_emit_media_codec_sbc_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid,
-                                                            adtvp_media_codec_capabilities_t media_codec) {
-    uint8_t event[15];
-    int pos = 0;
-    event[pos++] = HCI_EVENT_AVDTP_META;
-    event[pos++] = sizeof(event) - 2;
-    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_SBC_CAPABILITY;
-    little_endian_store_16(event, pos, avdtp_cid);
-    pos += 2;
-    event[pos++] = local_seid;
-    event[pos++] = remote_seid;
-    event[pos++] = media_codec.media_type;
-    event[pos++] = media_codec.media_codec_information[0] >> 4;
-    event[pos++] = media_codec.media_codec_information[0] & 0x0F;
-    event[pos++] = media_codec.media_codec_information[1] >> 4;
-    event[pos++] = (media_codec.media_codec_information[1] & 0x0F) >> 2;
-    event[pos++] = media_codec.media_codec_information[1] & 0x03;
-    event[pos++] = media_codec.media_codec_information[2];
-    event[pos++] = media_codec.media_codec_information[3];
-    avdtp_emit_sink_and_source(event, pos);
-}
-
 static inline void
-avdtp_signaling_emit_capability(uint8_t capability_subevent_id, uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid) {
-    uint8_t event[7];
+avdtp_signaling_emit_capability(uint8_t capability_subevent_id, uint16_t avdtp_cid, uint8_t remote_seid) {
+    uint8_t event[6];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = capability_subevent_id;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
-    event[pos++] = local_seid;
     event[pos++] = remote_seid;
     avdtp_emit_sink_and_source(event, pos);
 }
 
+static void avdtp_signaling_emit_media_codec_sbc_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec) {
+    const uint8_t * media_codec_information = media_codec.media_codec_information;
+    uint8_t event[14];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_SBC_CAPABILITY;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = remote_seid;
+    event[pos++] = media_codec.media_type;
+    event[pos++] = media_codec_information[0] >> 4;
+    event[pos++] = media_codec_information[0] & 0x0F;
+    event[pos++] = media_codec_information[1] >> 4;
+    event[pos++] = (media_codec_information[1] & 0x0F) >> 2;
+    event[pos++] = media_codec_information[1] & 0x03;
+    event[pos++] = media_codec_information[2];
+    event[pos++] = media_codec_information[3];
+    avdtp_emit_sink_and_source(event, pos);
+}
+
+static void avdtp_signaling_emit_media_codec_mpeg_audio_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec) {
+    const uint8_t * media_codec_information = media_codec.media_codec_information;
+    uint8_t event[15];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AUDIO_CAPABILITY;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = remote_seid;
+    event[pos++] = media_codec.media_type;
+
+    uint8_t layer_bitmap              =   media_codec_information[0] >> 5;
+    uint8_t crc                       =  (media_codec_information[0] >> 4) & 0x01;
+    uint8_t channel_mode_bitmap       =   media_codec_information[0] & 0x07;
+    uint8_t mpf                       =  (media_codec_information[1] >> 6) & 0x01;
+    uint8_t sampling_frequency_bitmap =   media_codec_information[1] & 0x3F;
+    uint8_t vbr                       =  (media_codec_information[2] >> 7) & 0x01;
+    uint16_t bit_rate_index_bitmap    = ((media_codec_information[3] & 0x3f) << 8) | media_codec.media_codec_information[4];
+
+    event[pos++] = layer_bitmap;
+    event[pos++] = crc;
+    event[pos++] = channel_mode_bitmap;
+    event[pos++] = mpf;
+    event[pos++] = sampling_frequency_bitmap;
+    event[pos++] = vbr;
+    little_endian_store_16(event, pos, bit_rate_index_bitmap);           // bit rate index
+    pos += 2;
+    avdtp_emit_sink_and_source(event, pos);
+}
+
+static void avdtp_signaling_emit_media_codec_mpeg_aac_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec) {
+    const uint8_t * media_codec_information = media_codec.media_codec_information;
+    uint8_t event[15];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AAC_CAPABILITY;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = remote_seid;
+    event[pos++] = media_codec.media_type;
+
+    uint8_t  object_type_bitmap        =   media_codec_information[0];
+    uint16_t sampling_frequency_bitmap =  (media_codec_information[1] << 4) | (media_codec_information[2] >> 4);
+    uint8_t  channels_bitmap           =  (media_codec_information[2] >> 2) & 0x03;
+    uint32_t bit_rate_bitmap           = ((media_codec_information[3] & 0x7f) << 16) | (media_codec_information[4] << 8) | media_codec_information[5];
+    uint8_t  vbr                       =   media_codec_information[3] >> 7;
+
+    event[pos++] =  object_type_bitmap;
+    little_endian_store_16(event, pos, sampling_frequency_bitmap);
+    pos += 2;
+    event[pos++] = channels_bitmap;
+    little_endian_store_24(event, pos, bit_rate_bitmap);
+    pos += 3;
+    event[pos++] = vbr;
+    avdtp_emit_sink_and_source(event, pos);
+}
+
+static void avdtp_signaling_emit_media_codec_atrac_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec) {
+    const uint8_t * media_codec_information = media_codec.media_codec_information;
+    uint8_t event[16];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    pos++; // set later
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_ATRAC_CAPABILITY;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = remote_seid;
+    event[pos++] = media_codec.media_type;
+
+    uint8_t  version                   =  media_codec_information[0] >> 5;
+    uint8_t  channel_mode_bitmap       = (media_codec_information[0] >> 2) & 0x07;
+    uint16_t sampling_frequency_bitmap = (media_codec_information[1] >> 4) & 0x03;
+    uint8_t  vbr                       = (media_codec_information[1] >> 3) & 0x01;
+    uint16_t bit_rate_index_bitmap     = ((media_codec_information[1]) & 0x07) << 16 | (media_codec_information[2] << 8) | media_codec_information[3];
+    uint16_t maximum_sul               = (media_codec_information[4] << 8) | media_codec_information[5];
+
+    event[pos++] = version;
+    event[pos++] = channel_mode_bitmap;
+    event[pos++] = sampling_frequency_bitmap;
+    event[pos++] = vbr;
+    little_endian_store_24(event, pos, bit_rate_index_bitmap);
+    pos += 3;
+    little_endian_store_16(event, pos, maximum_sul);
+    pos += 2;
+    event[1] = pos - 2;
+    avdtp_emit_sink_and_source(event, pos);
+}
+
+static void avdtp_signaling_emit_media_codec_other_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec) {
+    uint8_t event[MAX_MEDIA_CODEC_INFORMATION_LENGTH + 11];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    pos++; // set later
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = remote_seid;
+    event[pos++] = media_codec.media_type;
+    little_endian_store_16(event, pos, media_codec.media_codec_type);
+    pos += 2;
+    little_endian_store_16(event, pos, media_codec.media_codec_information_len);
+    pos += 2;
+    uint32_t media_codec_info_len = btstack_min(media_codec.media_codec_information_len, MAX_MEDIA_CODEC_INFORMATION_LENGTH);
+    (void)memcpy(event + pos, media_codec.media_codec_information, media_codec_info_len);
+    pos += media_codec_info_len;
+    event[1] = pos - 2;
+    avdtp_emit_sink_and_source(event, pos);
+}
+
 static void
-avdtp_signaling_emit_media_transport_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid) {
-    avdtp_signaling_emit_capability(AVDTP_SUBEVENT_SIGNALING_MEDIA_TRANSPORT_CAPABILITY, avdtp_cid, local_seid,
-                                    remote_seid);
+avdtp_signaling_emit_media_transport_capability(uint16_t avdtp_cid, uint8_t remote_seid) {
+	avdtp_signaling_emit_capability(AVDTP_SUBEVENT_SIGNALING_MEDIA_TRANSPORT_CAPABILITY, avdtp_cid,
+									remote_seid);
 }
 
-static void avdtp_signaling_emit_reporting_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid) {
-    avdtp_signaling_emit_capability(AVDTP_SUBEVENT_SIGNALING_REPORTING_CAPABILITY, avdtp_cid, local_seid, remote_seid);
+static void avdtp_signaling_emit_reporting_capability(uint16_t avdtp_cid, uint8_t remote_seid) {
+	avdtp_signaling_emit_capability(AVDTP_SUBEVENT_SIGNALING_REPORTING_CAPABILITY, avdtp_cid, remote_seid);
 }
 
 static void
-avdtp_signaling_emit_delay_reporting_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid) {
-    avdtp_signaling_emit_capability(AVDTP_SUBEVENT_SIGNALING_DELAY_REPORTING_CAPABILITY, avdtp_cid, local_seid,
-                                    remote_seid);
+avdtp_signaling_emit_delay_reporting_capability(uint16_t avdtp_cid, uint8_t remote_seid) {
+	avdtp_signaling_emit_capability(AVDTP_SUBEVENT_SIGNALING_DELAY_REPORTING_CAPABILITY, avdtp_cid,
+									remote_seid);
 }
 
-static void avdtp_signaling_emit_recovery_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid,
-                                                     avdtp_recovery_capabilities_t *recovery) {
-    uint8_t event[10];
+static void avdtp_signaling_emit_recovery_capability(uint16_t avdtp_cid, uint8_t remote_seid, avdtp_recovery_capabilities_t *recovery) {
+    uint8_t event[9];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = AVDTP_SUBEVENT_SIGNALING_RECOVERY_CAPABILITY;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
-    event[pos++] = local_seid;
     event[pos++] = remote_seid;
     event[pos++] = recovery->recovery_type;
     event[pos++] = recovery->maximum_recovery_window_size;
@@ -606,44 +779,45 @@ static void avdtp_signaling_emit_recovery_capability(uint16_t avdtp_cid, uint8_t
     avdtp_emit_sink_and_source(event, pos);
 }
 
+#define MAX_CONTENT_PROTECTION_VALUE_LEN 32
 static void
-avdtp_signaling_emit_content_protection_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid,
-                                                   adtvp_content_protection_t *content_protection) {
-    uint8_t event[22];
+avdtp_signaling_emit_content_protection_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_content_protection_t *content_protection) {
+    uint8_t event[10 + MAX_CONTENT_PROTECTION_VALUE_LEN];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
-    event[pos++] = sizeof(event) - 2;
+    pos++; // set later
     event[pos++] = AVDTP_SUBEVENT_SIGNALING_CONTENT_PROTECTION_CAPABILITY;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
-    event[pos++] = local_seid;
     event[pos++] = remote_seid;
-    
+
     little_endian_store_16(event, pos, content_protection->cp_type);
     pos += 2;
-    little_endian_store_16(event, pos, content_protection->cp_type_value_len);
-    pos += 2;
-    
-    //TODO: reserve place for value
-    if (content_protection->cp_type_value_len < 10){
-        (void)memcpy(event + pos, content_protection->cp_type_value,
-                     content_protection->cp_type_value_len);
+
+    // drop cp protection value if longer than expected
+    if (content_protection->cp_type_value_len <= MAX_CONTENT_PROTECTION_VALUE_LEN){
+        little_endian_store_16(event, pos, content_protection->cp_type_value_len);
+        pos += 2;
+        (void)memcpy(event + pos, content_protection->cp_type_value, content_protection->cp_type_value_len);
+        pos += content_protection->cp_type_value_len;
+    } else {
+        little_endian_store_16(event, pos, 0);
+        pos += 2;
     }
+    event[1] = pos - 2;
     avdtp_emit_sink_and_source(event, pos);
 }
 
 
 static void
-avdtp_signaling_emit_header_compression_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid,
-                                                   avdtp_header_compression_capabilities_t *header_compression) {
-    uint8_t event[10];
+avdtp_signaling_emit_header_compression_capability(uint16_t avdtp_cid, uint8_t remote_seid, avdtp_header_compression_capabilities_t *header_compression) {
+    uint8_t event[9];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = AVDTP_SUBEVENT_SIGNALING_HEADER_COMPRESSION_CAPABILITY;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
-    event[pos++] = local_seid;
     event[pos++] = remote_seid;
     event[pos++] = header_compression->back_ch;
     event[pos++] = header_compression->media;
@@ -652,16 +826,14 @@ avdtp_signaling_emit_header_compression_capability(uint16_t avdtp_cid, uint8_t l
 }
 
 static void
-avdtp_signaling_emit_content_multiplexing_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid,
-                                                     avdtp_multiplexing_mode_capabilities_t *multiplexing_mode) {
-    uint8_t event[15];
+avdtp_signaling_emit_content_multiplexing_capability(uint16_t avdtp_cid, uint8_t remote_seid, avdtp_multiplexing_mode_capabilities_t *multiplexing_mode) {
+    uint8_t event[14];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = AVDTP_SUBEVENT_SIGNALING_MULTIPLEXING_CAPABILITY;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
-    event[pos++] = local_seid;
     event[pos++] = remote_seid;
     
     event[pos++] = multiplexing_mode->fragmentation;
@@ -677,117 +849,528 @@ avdtp_signaling_emit_content_multiplexing_capability(uint16_t avdtp_cid, uint8_t
     avdtp_emit_sink_and_source(event, pos);
 }
 
-static void
-avdtp_signaling_emit_media_codec_other_capability(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid,
-                                                  adtvp_media_codec_capabilities_t media_codec) {
-    uint8_t event[MAX_MEDIA_CODEC_INFORMATION_LENGTH + 12];
-    int pos = 0;
-    event[pos++] = HCI_EVENT_AVDTP_META;
-    event[pos++] = sizeof(event) - 2;
-    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CAPABILITY;
-    little_endian_store_16(event, pos, avdtp_cid);
-    pos += 2;
-    event[pos++] = local_seid;
-    event[pos++] = remote_seid;
-    event[pos++] = media_codec.media_type;
-    little_endian_store_16(event, pos, media_codec.media_codec_type);
-    pos += 2;
-    little_endian_store_16(event, pos, media_codec.media_codec_information_len);
-    pos += 2;
-    (void)memcpy(event + pos, media_codec.media_codec_information,
-                 btstack_min(media_codec.media_codec_information_len, MAX_MEDIA_CODEC_INFORMATION_LENGTH));
-    avdtp_emit_sink_and_source(event, pos);
-}
-
-static void avdtp_signaling_emit_capability_done(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid) {
-    uint8_t event[7];
+static void avdtp_signaling_emit_capability_done(uint16_t avdtp_cid, uint8_t remote_seid) {
+    uint8_t event[6];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
     event[pos++] = AVDTP_SUBEVENT_SIGNALING_CAPABILITIES_DONE;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
-    event[pos++] = local_seid;
     event[pos++] = remote_seid;
     avdtp_emit_sink_and_source(event, pos);
 }
 
-void avdtp_signaling_emit_media_codec_other(btstack_packet_handler_t callback, uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec, uint8_t reconfigure){
-    btstack_assert(callback != NULL);
-    uint8_t event[MAX_MEDIA_CODEC_INFORMATION_LENGTH + 13];
+static void avdtp_signaling_emit_media_codec_capability(uint16_t avdtp_cid, uint8_t remote_seid, adtvp_media_codec_capabilities_t media_codec){
+    switch (media_codec.media_codec_type){
+        case AVDTP_CODEC_SBC:
+            avdtp_signaling_emit_media_codec_sbc_capability(avdtp_cid, remote_seid, media_codec);
+            break;
+        case AVDTP_CODEC_MPEG_1_2_AUDIO:
+            avdtp_signaling_emit_media_codec_mpeg_audio_capability(avdtp_cid, remote_seid, media_codec);
+            break;
+        case AVDTP_CODEC_MPEG_2_4_AAC:
+            avdtp_signaling_emit_media_codec_mpeg_aac_capability(avdtp_cid, remote_seid, media_codec);
+            break;
+        case AVDTP_CODEC_ATRAC_FAMILY:
+            avdtp_signaling_emit_media_codec_atrac_capability(avdtp_cid, remote_seid, media_codec);
+            break;
+        default:
+            avdtp_signaling_emit_media_codec_other_capability(avdtp_cid, remote_seid, media_codec);
+            break;
+    }
+}
+
+// emit events for all capabilities incl. final done event
+void avdtp_signaling_emit_capabilities(uint16_t avdtp_cid, uint8_t remote_seid, avdtp_capabilities_t *capabilities,
+									   uint16_t registered_service_categories) {
+    if (get_bit16(registered_service_categories, AVDTP_MEDIA_CODEC)){
+        avdtp_signaling_emit_media_codec_capability(avdtp_cid, remote_seid, capabilities->media_codec);
+    }
+
+    if (get_bit16(registered_service_categories, AVDTP_MEDIA_TRANSPORT)){
+		avdtp_signaling_emit_media_transport_capability(avdtp_cid, remote_seid);
+    }
+    if (get_bit16(registered_service_categories, AVDTP_REPORTING)){
+		avdtp_signaling_emit_reporting_capability(avdtp_cid, remote_seid);
+    }
+    if (get_bit16(registered_service_categories, AVDTP_RECOVERY)){
+		avdtp_signaling_emit_recovery_capability(avdtp_cid, remote_seid, &capabilities->recovery);
+    }
+    if (get_bit16(registered_service_categories, AVDTP_CONTENT_PROTECTION)){
+		avdtp_signaling_emit_content_protection_capability(avdtp_cid, remote_seid,
+														   &capabilities->content_protection);
+    }
+    if (get_bit16(registered_service_categories, AVDTP_HEADER_COMPRESSION)){
+		avdtp_signaling_emit_header_compression_capability(avdtp_cid, remote_seid,
+														   &capabilities->header_compression);
+    }
+    if (get_bit16(registered_service_categories, AVDTP_MULTIPLEXING)){
+		avdtp_signaling_emit_content_multiplexing_capability(avdtp_cid, remote_seid,
+															 &capabilities->multiplexing_mode);
+    }
+    if (get_bit16(registered_service_categories, AVDTP_DELAY_REPORTING)){
+		avdtp_signaling_emit_delay_reporting_capability(avdtp_cid, remote_seid);
+    }
+	avdtp_signaling_emit_capability_done(avdtp_cid, remote_seid);
+}
+
+static void
+avdtp_signaling_emit_media_codec_sbc(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid, uint8_t reconfigure,
+                                     avdtp_media_type_t media_type, const uint8_t *media_codec_information) {
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    uint8_t local_seid = avdtp_local_seid(stream_endpoint);
+    uint8_t remote_seid = avdtp_remote_seid(stream_endpoint);
+
+    uint8_t event[16 + 2];
     int pos = 0;
     event[pos++] = HCI_EVENT_AVDTP_META;
     event[pos++] = sizeof(event) - 2;
+
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_SBC_CONFIGURATION;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+    event[pos++] = remote_seid;
+    event[pos++] = reconfigure;
+
+
+    uint8_t sampling_frequency_bitmap = media_codec_information[0] >> 4;
+    uint8_t channel_mode_bitmap = media_codec_information[0] & 0x0F;
+    uint8_t block_length_bitmap = media_codec_information[1] >> 4;
+    uint8_t subbands_bitmap = (media_codec_information[1] & 0x0F) >> 2;
+
+    uint8_t num_channels = 0;
+    avdtp_channel_mode_t channel_mode;
+
+    if (channel_mode_bitmap & AVDTP_SBC_JOINT_STEREO){
+        channel_mode = AVDTP_CHANNEL_MODE_JOINT_STEREO;
+        num_channels = 2;
+    } else if (channel_mode_bitmap & AVDTP_SBC_STEREO){
+        channel_mode = AVDTP_CHANNEL_MODE_STEREO;
+        num_channels = 2;
+    } else if (channel_mode_bitmap & AVDTP_SBC_DUAL_CHANNEL){
+        channel_mode = AVDTP_CHANNEL_MODE_DUAL_CHANNEL;
+        num_channels = 2;
+    } else {
+        channel_mode = AVDTP_CHANNEL_MODE_MONO;
+        num_channels = 1;
+    }
+
+    uint16_t sampling_frequency = 0;
+    if (sampling_frequency_bitmap & AVDTP_SBC_48000) {
+        sampling_frequency = 48000;
+    } else if (sampling_frequency_bitmap & AVDTP_SBC_44100) {
+        sampling_frequency = 44100;
+    } else if (sampling_frequency_bitmap & AVDTP_SBC_32000) {
+        sampling_frequency = 32000;
+    } else if (sampling_frequency_bitmap & AVDTP_SBC_16000) {
+        sampling_frequency = 16000;
+    }
+
+    uint8_t subbands = 0;
+    if (subbands_bitmap & AVDTP_SBC_SUBBANDS_8){
+        subbands = 8;
+    } else if (subbands_bitmap & AVDTP_SBC_SUBBANDS_4){
+        subbands = 4;
+    }
+
+    uint8_t block_length = 0;
+    if (block_length_bitmap & AVDTP_SBC_BLOCK_LENGTH_16){
+        block_length = 16;
+    } else if (block_length_bitmap & AVDTP_SBC_BLOCK_LENGTH_12){
+        block_length = 12;
+    } else if (block_length_bitmap & AVDTP_SBC_BLOCK_LENGTH_8){
+        block_length = 8;
+    } else if (block_length_bitmap & AVDTP_SBC_BLOCK_LENGTH_4){
+        block_length = 4;
+    }
+
+    event[pos++] = media_type;
+    little_endian_store_16(event, pos, sampling_frequency);
+    pos += 2;
+
+    event[pos++] = (uint8_t) channel_mode;
+    event[pos++] = num_channels;
+    event[pos++] = block_length;
+    event[pos++] = subbands;
+    event[pos++] = media_codec_information[1] & 0x03;
+    event[pos++] = media_codec_information[2];
+    event[pos++] = media_codec_information[3];
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+static void
+avdtp_signaling_emit_media_codec_mpeg_audio_configuration(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid,
+                                                          uint8_t reconfigure, avdtp_media_type_t media_type,
+                                                          const uint8_t *media_codec_information) {
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    uint8_t local_seid = avdtp_local_seid(stream_endpoint);
+    uint8_t remote_seid = avdtp_remote_seid(stream_endpoint);
+
+    uint8_t event[18];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AUDIO_CONFIGURATION;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+    event[pos++] = remote_seid;
+    event[pos++] = reconfigure;
+
+    uint8_t layer_bitmap              =   media_codec_information[0] >> 5;
+    uint8_t crc                       =  (media_codec_information[0] >> 4) & 0x01;
+    uint8_t channel_mode_bitmap       =  (media_codec_information[0] & 0x07);
+    uint8_t mpf                       =  (media_codec_information[1] >> 6) & 0x01;
+    uint8_t sampling_frequency_bitmap =  (media_codec_information[1] & 0x3F);
+    uint8_t vbr                       =  (media_codec_information[2] >> 7) & 0x01;
+    uint16_t bit_rate_index_bitmap    = ((media_codec_information[2] & 0x3f) << 8) | media_codec_information[3];
+
+    uint8_t layer = 0;
+    if (layer_bitmap & 0x04){
+        layer = AVDTP_MPEG_LAYER_1;
+    } else if (layer_bitmap & 0x02){
+        layer = AVDTP_MPEG_LAYER_2;
+    } else if (layer_bitmap & 0x01){
+        layer = AVDTP_MPEG_LAYER_3;
+    }
+
+    uint8_t num_channels = 0;
+    avdtp_channel_mode_t channel_mode = AVDTP_CHANNEL_MODE_JOINT_STEREO;
+    if (channel_mode_bitmap & 0x08){
+        num_channels = 1;
+        channel_mode = AVDTP_CHANNEL_MODE_MONO;
+    } else if (channel_mode_bitmap & 0x04){
+        num_channels = 2;
+        channel_mode = AVDTP_CHANNEL_MODE_DUAL_CHANNEL;
+    } else if (channel_mode_bitmap & 0x02){
+        num_channels = 2;
+        channel_mode = AVDTP_CHANNEL_MODE_STEREO;
+    } else if (channel_mode_bitmap & 0x02){
+        num_channels = 2;
+        channel_mode = AVDTP_CHANNEL_MODE_JOINT_STEREO;
+    }
+
+    uint16_t sampling_frequency = 0;
+    if (sampling_frequency_bitmap & 0x01) {
+        sampling_frequency = 48000;
+    } else if (sampling_frequency_bitmap & 0x02) {
+        sampling_frequency = 44100;
+    } else if (sampling_frequency_bitmap & 0x04) {
+        sampling_frequency = 32000;
+    } else if (sampling_frequency_bitmap & 0x08) {
+        sampling_frequency = 24000;
+    } else if (sampling_frequency_bitmap & 0x10) {
+        sampling_frequency = 22050;
+    } else if (sampling_frequency_bitmap & 0x20) {
+        sampling_frequency = 16000;
+    }
+
+    uint8_t bitrate_index = 0;
+    uint8_t i;
+    for (i=0;i<14;i++){
+        if (bit_rate_index_bitmap & (1U << i)) {
+            bitrate_index = i;
+        }
+    }
+
+    event[pos++] = media_type;
+    event[pos++] = (uint8_t) layer;
+    event[pos++] = crc;
+    event[pos++] = (uint8_t) channel_mode;
+    event[pos++] = num_channels;
+    event[pos++] = mpf;
+    little_endian_store_16(event, pos, sampling_frequency);
+    pos += 2;
+    event[pos++] = vbr;
+    event[pos++] = bitrate_index;
+
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+
+static void
+avdtp_signaling_emit_media_codec_mpeg_aac_configuration(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid,
+                                                        uint8_t reconfigure, avdtp_media_type_t media_type,
+                                                        const uint8_t *media_codec_information) {
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    uint8_t local_seid = avdtp_local_seid(stream_endpoint);
+    uint8_t remote_seid = avdtp_remote_seid(stream_endpoint);
+
+    uint8_t event[18];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_MPEG_AAC_CONFIGURATION;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+    event[pos++] = remote_seid;
+    event[pos++] = reconfigure;
+
+    uint8_t  object_type_bitmap        =   media_codec_information[0];
+    uint16_t sampling_frequency_bitmap =  (media_codec_information[1] << 4) | (media_codec_information[2] >> 4);
+    uint8_t  channels_bitmap           =  (media_codec_information[2] >> 2) & 0x03;
+    uint8_t  vbr                       =   media_codec_information[3] >> 7;
+    uint32_t bit_rate                  = ((media_codec_information[3] & 0x7f) << 16) | (media_codec_information[4] << 8) | media_codec_information[5];
+
+    uint8_t object_type = 0;
+    if (object_type_bitmap & 0x80){
+        object_type = AVDTP_AAC_MPEG2_LC;
+    } else if (object_type_bitmap & 0x40){
+        object_type = AVDTP_AAC_MPEG4_LC;
+    } else if (object_type_bitmap & 0x020){
+        object_type = AVDTP_AAC_MPEG4_LTP;
+    } else if (object_type_bitmap & 0x010){
+        object_type = AVDTP_AAC_MPEG4_SCALABLE;
+    }
+
+    uint32_t sampling_frequency = 0;
+    uint8_t i;
+    const uint32_t aac_sampling_frequency_table[] = {
+        96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000
+    };
+    for (i=0;i<12;i++){
+        if (sampling_frequency_bitmap & (1U << i)) {
+            sampling_frequency = aac_sampling_frequency_table[i];
+        }
+    }
+
+    uint8_t num_channels = 0;
+    if (channels_bitmap & 0x02){
+        num_channels = 1;
+    } else if (channels_bitmap & 0x01){
+        num_channels = 2;
+    }
+
+    event[pos++] = media_type;
+    event[pos++] = object_type;
+    little_endian_store_24(event, pos, sampling_frequency);
+    pos += 3;
+    event[pos++] = num_channels;
+    little_endian_store_24(event, pos, bit_rate);
+    pos += 3;
+    event[pos++] = vbr;
+
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+static void
+avdtp_signaling_emit_media_codec_atrac_configuration(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid,
+                                                     uint8_t reconfigure, avdtp_media_type_t media_type,
+                                                     const uint8_t *media_codec_information) {
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    uint8_t local_seid = avdtp_local_seid(stream_endpoint);
+    uint8_t remote_seid = avdtp_remote_seid(stream_endpoint);
+
+    uint8_t event[18];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_ATRAC_CONFIGURATION;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+    event[pos++] = remote_seid;
+    event[pos++] = reconfigure;
+
+    avdtp_atrac_version_t  version     = (avdtp_atrac_version_t) (media_codec_information[0] >> 5);
+    uint8_t  channel_mode_bitmap       = (media_codec_information[0] >> 2) & 0x07;
+    uint16_t sampling_frequency_bitmap = (media_codec_information[1] >> 4) & 0x03;
+    uint8_t  vbr                       = (media_codec_information[1] >> 3) & 0x01;
+    uint16_t bit_rate_index_bitmap     = ((media_codec_information[1]) & 0x07) << 16 | (media_codec_information[2] << 8) | media_codec_information[3];
+    uint16_t maximum_sul               = (media_codec_information[4] << 8) | media_codec_information[5];
+
+    uint8_t num_channels = 0;
+    avdtp_channel_mode_t channel_mode = AVDTP_CHANNEL_MODE_JOINT_STEREO;
+    if (channel_mode_bitmap & 0x04){
+        num_channels = 1;
+        channel_mode = AVDTP_CHANNEL_MODE_MONO;
+    } else if (channel_mode_bitmap & 0x02){
+        num_channels = 2;
+        channel_mode = AVDTP_CHANNEL_MODE_DUAL_CHANNEL;
+    } else if (channel_mode_bitmap & 0x01){
+        num_channels = 2;
+        channel_mode = AVDTP_CHANNEL_MODE_JOINT_STEREO;
+    }
+
+    uint16_t sampling_frequency = 0;
+    if (sampling_frequency_bitmap & 0x02){
+        sampling_frequency = 44100;
+    } else if (sampling_frequency_bitmap & 0x01){
+        sampling_frequency = 48000;
+    }
+
+    // bit 0 = index 0x18, bit 19 = index 0
+    uint8_t bit_rate_index = 0;
+    uint8_t i;
+    for (i=0;i <= 19;i++){
+        if (bit_rate_index_bitmap & (1U << i)) {
+            bit_rate_index = 18 - i;
+        }
+    }
+
+    event[pos++] = media_type;
+    event[pos++] = (uint8_t) version;
+    event[pos++] = (uint8_t) channel_mode;
+    event[pos++] = num_channels;
+    little_endian_store_16(event, pos, sampling_frequency);
+    pos += 2;
+    event[pos++] = vbr;
+    event[pos++] = bit_rate_index;
+    little_endian_store_16(event, pos, maximum_sul);
+    pos += 2;
+
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+static void avdtp_signaling_emit_media_codec_other_configuration(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid,
+                                                   uint8_t reconfigure, adtvp_media_codec_capabilities_t *media_codec) {
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    uint8_t local_seid = avdtp_local_seid(stream_endpoint);
+    uint8_t remote_seid = avdtp_remote_seid(stream_endpoint);
+
+    uint8_t event[MAX_MEDIA_CODEC_INFORMATION_LENGTH + 13];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    pos++;  // set later
     event[pos++] = AVDTP_SUBEVENT_SIGNALING_MEDIA_CODEC_OTHER_CONFIGURATION;
     little_endian_store_16(event, pos, avdtp_cid);
     pos += 2;
     event[pos++] = local_seid;
     event[pos++] = remote_seid;
     event[pos++] = reconfigure;
-    event[pos++] = media_codec.media_type;
-    little_endian_store_16(event, pos, media_codec.media_codec_type);
+    event[pos++] = media_codec->media_type;
+    little_endian_store_16(event, pos, media_codec->media_codec_type);
     pos += 2;
-    little_endian_store_16(event, pos, media_codec.media_codec_information_len);
+    little_endian_store_16(event, pos, media_codec->media_codec_information_len);
     pos += 2;
-
-    int media_codec_len = btstack_min(MAX_MEDIA_CODEC_INFORMATION_LENGTH, media_codec.media_codec_information_len);
-    (void)memcpy(event + pos, media_codec.media_codec_information,
-                 media_codec_len);
-    
-    (*callback)(HCI_EVENT_PACKET, 0, event, sizeof(event));
+    uint16_t media_codec_len = btstack_min(MAX_MEDIA_CODEC_INFORMATION_LENGTH, media_codec->media_codec_information_len);
+    (void)memcpy(event + pos, media_codec->media_codec_information, media_codec_len);
+    pos += media_codec_len;
+    event[1] = pos - 2;
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
 }
 
-void avdtp_emit_capabilities(uint16_t avdtp_cid, uint8_t local_seid, uint8_t remote_seid, avdtp_capabilities_t *capabilities,
-                        uint16_t registered_service_categories) {
-    if (get_bit16(registered_service_categories, AVDTP_MEDIA_CODEC)){
-        switch (capabilities->media_codec.media_codec_type){
-            case AVDTP_CODEC_SBC:
-                avdtp_signaling_emit_media_codec_sbc_capability(avdtp_cid, local_seid, remote_seid, capabilities->media_codec);
+void avdtp_signaling_emit_delay(uint16_t avdtp_cid, uint8_t local_seid, uint16_t delay) {
+    uint8_t event[8];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_SIGNALING_DELAY_REPORT;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+    little_endian_store_16(event, pos, delay);
+    pos += 2;
+    avdtp_emit_source(event, pos);
+}
+
+void avdtp_signaling_emit_configuration(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid, uint8_t reconfigure,
+                                   avdtp_capabilities_t *configuration, uint16_t configured_service_categories) {
+    
+    if (get_bit16(configured_service_categories, AVDTP_MEDIA_CODEC)){
+        switch (configuration->media_codec.media_codec_type){
+            case AVDTP_CODEC_SBC: {
+                avdtp_signaling_emit_media_codec_sbc(stream_endpoint, avdtp_cid, reconfigure,
+                                                     configuration->media_codec.media_type,
+                                                     configuration->media_codec.media_codec_information);
+            }
+                break;
+            case AVDTP_CODEC_MPEG_1_2_AUDIO:
+                avdtp_signaling_emit_media_codec_mpeg_audio_configuration(
+                        stream_endpoint, avdtp_cid, reconfigure,
+                        configuration->media_codec.media_type,
+                        configuration->media_codec.media_codec_information);
+                break;
+            case AVDTP_CODEC_MPEG_2_4_AAC:
+                avdtp_signaling_emit_media_codec_mpeg_aac_configuration(
+                        stream_endpoint, avdtp_cid, reconfigure,
+                        configuration->media_codec.media_type,
+                        configuration->media_codec.media_codec_information);
+                break;
+            case AVDTP_CODEC_ATRAC_FAMILY:
+                avdtp_signaling_emit_media_codec_atrac_configuration(
+                        stream_endpoint, avdtp_cid, reconfigure,
+                        configuration->media_codec.media_type,
+                        configuration->media_codec.media_codec_information);
                 break;
             default:
-                avdtp_signaling_emit_media_codec_other_capability(avdtp_cid, local_seid, remote_seid, capabilities->media_codec);
+                avdtp_signaling_emit_media_codec_other_configuration(stream_endpoint, avdtp_cid, reconfigure, &configuration->media_codec);
                 break;
         }
     }
-
-    if (get_bit16(registered_service_categories, AVDTP_MEDIA_TRANSPORT)){
-        avdtp_signaling_emit_media_transport_capability(avdtp_cid, local_seid, remote_seid);
-    }
-    if (get_bit16(registered_service_categories, AVDTP_REPORTING)){
-        avdtp_signaling_emit_reporting_capability(avdtp_cid, local_seid, remote_seid);
-    }
-    if (get_bit16(registered_service_categories, AVDTP_RECOVERY)){
-        avdtp_signaling_emit_recovery_capability(avdtp_cid, local_seid, remote_seid, &capabilities->recovery);
-    }
-    if (get_bit16(registered_service_categories, AVDTP_CONTENT_PROTECTION)){
-        avdtp_signaling_emit_content_protection_capability(avdtp_cid, local_seid, remote_seid,
-                                                           &capabilities->content_protection);
-    }
-    if (get_bit16(registered_service_categories, AVDTP_HEADER_COMPRESSION)){
-        avdtp_signaling_emit_header_compression_capability(avdtp_cid, local_seid, remote_seid,
-                                                           &capabilities->header_compression);
-    }
-    if (get_bit16(registered_service_categories, AVDTP_MULTIPLEXING)){
-        avdtp_signaling_emit_content_multiplexing_capability(avdtp_cid, local_seid, remote_seid,
-                                                             &capabilities->multiplexing_mode);
-    }
-    if (get_bit16(registered_service_categories, AVDTP_DELAY_REPORTING)){
-        avdtp_signaling_emit_delay_reporting_capability(avdtp_cid, local_seid, remote_seid);
-    }
-    avdtp_signaling_emit_capability_done(avdtp_cid, local_seid, remote_seid);
 }
 
-uint8_t avdtp_request_can_send_now_acceptor(avdtp_connection_t * connection, uint16_t l2cap_cid){
+void avdtp_streaming_emit_connection_established(avdtp_stream_endpoint_t *stream_endpoint, uint8_t status) {
+    uint8_t event[14];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_STREAMING_CONNECTION_ESTABLISHED;
+    little_endian_store_16(event, pos, stream_endpoint->connection->avdtp_cid);
+    pos += 2;
+    reverse_bd_addr(stream_endpoint->connection->remote_addr, &event[pos]);
+    pos += 6;
+    event[pos++] = avdtp_local_seid(stream_endpoint);
+    event[pos++] = avdtp_remote_seid(stream_endpoint);
+    event[pos++] = status;
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+void avdtp_streaming_emit_connection_released(avdtp_stream_endpoint_t *stream_endpoint, uint16_t avdtp_cid, uint8_t local_seid) {
+    uint8_t event[6];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_STREAMING_CONNECTION_RELEASED;
+    little_endian_store_16(event, pos, avdtp_cid);
+    pos += 2;
+    event[pos++] = local_seid;
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+void avdtp_streaming_emit_can_send_media_packet_now(avdtp_stream_endpoint_t *stream_endpoint, uint16_t sequence_number) {
+    uint8_t event[8];
+    int pos = 0;
+    event[pos++] = HCI_EVENT_AVDTP_META;
+    event[pos++] = sizeof(event) - 2;
+    event[pos++] = AVDTP_SUBEVENT_STREAMING_CAN_SEND_MEDIA_PACKET_NOW;
+    little_endian_store_16(event, pos, stream_endpoint->connection->avdtp_cid);
+    pos += 2;
+    event[pos++] = avdtp_local_seid(stream_endpoint);
+    little_endian_store_16(event, pos, sequence_number);
+    pos += 2;
+    event[1] = pos - 2;
+
+    btstack_packet_handler_t packet_handler = avdtp_packet_handler_for_stream_endpoint(stream_endpoint);
+    (*packet_handler)(HCI_EVENT_PACKET, 0, event, pos);
+}
+
+uint8_t avdtp_request_can_send_now_acceptor(avdtp_connection_t *connection) {
     if (!connection) return ERROR_CODE_UNKNOWN_CONNECTION_IDENTIFIER;
-    connection->wait_to_send_acceptor = 1;
-    l2cap_request_can_send_now_event(l2cap_cid);
+    connection->wait_to_send_acceptor = true;
+    l2cap_request_can_send_now_event(connection->l2cap_signaling_cid);
     return ERROR_CODE_SUCCESS;
 }
 
-uint8_t avdtp_request_can_send_now_initiator(avdtp_connection_t * connection, uint16_t l2cap_cid){
+uint8_t avdtp_request_can_send_now_initiator(avdtp_connection_t *connection) {
     if (!connection) return ERROR_CODE_UNKNOWN_CONNECTION_IDENTIFIER;
-    connection->wait_to_send_initiator = 1;
-    l2cap_request_can_send_now_event(l2cap_cid);
+    connection->wait_to_send_initiator = true;
+    l2cap_request_can_send_now_event(connection->l2cap_signaling_cid);
     return ERROR_CODE_SUCCESS;
 }
 
@@ -802,19 +1385,190 @@ uint8_t avdtp_remote_seid(avdtp_stream_endpoint_t * stream_endpoint){
     return stream_endpoint->remote_sep.seid;
 }
 
-void a2dp_streaming_emit_connection_established(btstack_packet_handler_t callback, uint16_t cid, bd_addr_t addr, uint8_t local_seid, uint8_t remote_seid, uint8_t status){
+// helper for A2DP
+
+void a2dp_replace_subevent_id_and_emit_cmd(btstack_packet_handler_t callback, uint8_t * packet, uint16_t size, uint8_t subevent_id){
+    UNUSED(size);
     btstack_assert(callback != NULL);
-    uint8_t event[14];
+    // cache orig event and subevent id
+    uint8_t orig_event_id    = packet[0];
+    uint8_t orig_subevent_id = packet[2];
+    // execute callback
+    packet[0] = HCI_EVENT_A2DP_META;
+    packet[2] = subevent_id;
+    (*callback)(HCI_EVENT_PACKET, 0, packet, size);
+    // restore id
+    packet[0] = orig_event_id;
+    packet[2] = orig_subevent_id;
+}
+
+void a2dp_emit_stream_event(btstack_packet_handler_t callback, uint16_t cid, uint8_t local_seid, uint8_t subevent_id){
+    uint8_t event[6];
     int pos = 0;
     event[pos++] = HCI_EVENT_A2DP_META;
     event[pos++] = sizeof(event) - 2;
-    event[pos++] = A2DP_SUBEVENT_STREAM_ESTABLISHED;
+    event[pos++] = subevent_id;
     little_endian_store_16(event, pos, cid);
     pos += 2;
-    reverse_bd_addr(addr,&event[pos]);
-    pos += 6;
     event[pos++] = local_seid;
-    event[pos++] = remote_seid;
-    event[pos++] = status;
     (*callback)(HCI_EVENT_PACKET, 0, event, sizeof(event));
+}
+
+// helper to set/get configuration
+void avdtp_config_sbc_set_sampling_frequency(uint8_t * config, uint16_t sampling_frequency_hz){
+    avdtp_sbc_sampling_frequency_t sampling_frequency;
+    switch (sampling_frequency_hz){
+        case 16000:
+            sampling_frequency = AVDTP_SBC_16000;
+            break;
+        case 32000:
+            sampling_frequency = AVDTP_SBC_32000;
+            break;
+        case 48000:
+            sampling_frequency = AVDTP_SBC_48000;
+            break;
+        default:
+            sampling_frequency = AVDTP_SBC_44100;
+            break;
+    }
+    config[0] = (((uint8_t) sampling_frequency) << 4) | (config[0] & 0x0f);
+}
+
+void avdtp_config_sbc_store(uint8_t * config, const avdtp_configuration_sbc_t * configuration){
+    avdtp_sbc_channel_mode_t sbc_channel_mode;
+    switch (configuration->channel_mode){
+        case AVDTP_CHANNEL_MODE_MONO:
+            sbc_channel_mode = AVDTP_SBC_MONO;
+            break;
+        case AVDTP_CHANNEL_MODE_DUAL_CHANNEL:
+            sbc_channel_mode = AVDTP_SBC_DUAL_CHANNEL;
+            break;
+        case AVDTP_CHANNEL_MODE_STEREO:
+            sbc_channel_mode = AVDTP_SBC_STEREO;
+            break;
+        default:
+            sbc_channel_mode = AVDTP_SBC_JOINT_STEREO;
+            break;
+    }
+    config[0] = (uint8_t) sbc_channel_mode;
+    config[1] = (configuration->block_length << 4) | (configuration->subbands << 2) | configuration->allocation_method;
+    config[2] = configuration-> min_bitpool_value;
+    config[3] = configuration->max_bitpool_value;
+    avdtp_config_sbc_set_sampling_frequency(config, configuration->sampling_frequency);
+}
+
+void avdtp_config_mpeg_audio_set_sampling_frequency(uint8_t * config, uint16_t sampling_frequency_hz) {
+    uint8_t sampling_frequency_index = 0;
+    switch (sampling_frequency_hz){
+        case 16000:
+            sampling_frequency_index = 5;
+            break;
+        case 22040:
+            sampling_frequency_index = 4;
+            break;
+        case 24000:
+            sampling_frequency_index = 3;
+            break;
+        case 32000:
+            sampling_frequency_index = 2;
+            break;
+        case 44100:
+            sampling_frequency_index = 1;
+            break;
+        case 48000:
+            sampling_frequency_index = 0;
+            break;
+        default:
+            btstack_assert(false);
+            break;
+    }
+    config[1] = (config[1] & 0xC0) | (1 << sampling_frequency_index);
+}
+
+void avdtp_config_mpeg_audio_store(uint8_t * config, const avdtp_configuration_mpeg_audio_t * configuration){
+
+    config[0] = (1 << (7 - (configuration->layer - AVDTP_MPEG_LAYER_1))) | ((configuration->crc & 0x01) << 4) | (1 << (configuration->channel_mode - AVDTP_CHANNEL_MODE_MONO));
+    config[1] = ((configuration->media_payload_format & 0x01) << 6) ;
+    uint16_t bit_rate_mask = 1 << configuration->bit_rate_index;
+    config[2] = ((configuration->vbr & 0x01) << 7) | ((bit_rate_mask >> 8) & 0x3f);
+    config[3] = bit_rate_mask & 0xff;
+    avdtp_config_mpeg_audio_set_sampling_frequency(config, configuration->sampling_frequency);
+}
+
+
+void avdtp_config_mpeg_aac_set_sampling_frequency(uint8_t * config, uint16_t sampling_frequency_hz) {
+    uint16_t sampling_frequency_bitmap = 0;
+    uint8_t i;
+    const uint32_t aac_sampling_frequency_table[] = {
+            96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000
+    };
+    for (i=0;i<12;i++){
+        if (sampling_frequency_hz == aac_sampling_frequency_table[i]){
+            sampling_frequency_bitmap = 1 << i;
+            break;
+        }
+    }
+    config[1] = sampling_frequency_bitmap >> 4;
+    config[2] = ((sampling_frequency_bitmap & 0x0f) << 4) | (config[2] & 0x0f);
+}
+
+void avdtp_config_mpeg_aac_store(uint8_t * config, const avdtp_configuration_mpeg_aac_t * configuration) {
+    config[0] = 1 << (7 -(configuration->object_type - AVDTP_AAC_MPEG2_LC));
+    uint8_t channels_bitmap = 0;
+    switch (configuration->channels){
+        case 1:
+            channels_bitmap = 0x02;
+            break;
+        case 2:
+            channels_bitmap = 0x01;
+            break;
+        default:
+            break;
+    }
+    config[2] = channels_bitmap << 2;
+    config[3] = ((configuration->vbr & 0x01) << 7) | ((configuration->bit_rate >> 16) & 0x7f);
+    config[4] = (configuration->bit_rate >> 8) & 0xff;
+    config[5] =  configuration->bit_rate & 0xff;
+    avdtp_config_mpeg_aac_set_sampling_frequency(config, configuration->sampling_frequency);
+}
+
+void avdtp_config_atrac_set_sampling_frequency(uint8_t * config, uint16_t sampling_frequency_hz) {
+    uint8_t fs_bitmap = 0;
+    switch (sampling_frequency_hz){
+        case 44100:
+            fs_bitmap = 2;
+            break;
+        case 48000:
+            fs_bitmap = 1;
+            break;
+        default:
+            break;
+    }
+    config[1] = (fs_bitmap << 4) | (config[1] & 0x0F);
+}
+
+void avdtp_config_atrac_store(uint8_t * config, const avdtp_configuration_atrac_t * configuration){
+    uint8_t channel_mode_bitmap = 0;
+    switch (configuration->channel_mode){
+        case AVDTP_CHANNEL_MODE_MONO:
+            channel_mode_bitmap = 4;
+            break;
+        case AVDTP_CHANNEL_MODE_DUAL_CHANNEL:
+            channel_mode_bitmap = 2;
+            break;
+        case AVDTP_CHANNEL_MODE_JOINT_STEREO:
+            channel_mode_bitmap = 1;
+            break;
+        default:
+            break;
+    }
+    config[0] = ((configuration->version - AVDTP_ATRAC_VERSION_1 + 1) << 5) | (channel_mode_bitmap << 2);
+    uint32_t bit_rate_bitmap = 1 << (0x18 - configuration->bit_rate_index);
+    config[1] = ((configuration->vbr & 0x01) << 3) | ((bit_rate_bitmap >> 16) & 0x07);
+    config[2] = (bit_rate_bitmap >> 8) & 0xff;
+    config[3] = bit_rate_bitmap & 0xff;
+    config[4] = configuration->maximum_sul >> 8;
+    config[5] = configuration->maximum_sul & 0xff;
+    config[6] = 0;
+    avdtp_config_atrac_set_sampling_frequency(config, configuration->sampling_frequency);
 }

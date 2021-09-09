@@ -45,7 +45,6 @@
 #include "btstack_util.h"
 #include "bluetooth_gatt.h"
 #include "btstack_debug.h"
-#include "l2cap.h"
 
 #include "ble/gatt-service/heart_rate_service_server.h"
 
@@ -149,8 +148,9 @@ void heart_rate_service_server_init(heart_rate_service_body_sensor_location_t lo
     // get service handle range
     uint16_t start_handle = 0;
     uint16_t end_handle   = 0xffff;
-    int service_found = gatt_server_get_get_handle_range_for_service_with_uuid16(ORG_BLUETOOTH_SERVICE_HEART_RATE, &start_handle, &end_handle);
-    if (!service_found) return;
+    int service_found = gatt_server_get_handle_range_for_service_with_uuid16(ORG_BLUETOOTH_SERVICE_HEART_RATE, &start_handle, &end_handle);
+	btstack_assert(service_found != 0);
+	UNUSED(service_found);
 
     // get Heart Rate Mesurement characteristic value handle and client configuration handle
     instance->measurement_value_handle = gatt_server_get_value_handle_for_characteristic_with_uuid16(start_handle, end_handle, ORG_BLUETOOTH_CHARACTERISTIC_HEART_RATE_MEASUREMENT);
@@ -196,8 +196,7 @@ static void heart_rate_service_can_send_now(void * context){
         pos += 2;
     }
 
-    // TODO: get actual MTU from ATT server
-    uint16_t bytes_left = btstack_min(sizeof(value), l2cap_max_mtu() - 3u - pos);
+    uint16_t bytes_left = btstack_min(sizeof(value), att_server_get_mtu(instance->con_handle) - 3u - pos);
 
     while ((bytes_left > 2u) && instance->rr_interval_count){
         little_endian_store_16(value, pos, instance->rr_intervals[0]);

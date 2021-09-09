@@ -38,7 +38,7 @@
 #define __BTSTACK_FILE__ "pan_lwip_http_server.c"
 
 // *****************************************************************************
-/* EXAMPLE_START(pan_lwip_http_server): PAN - HTTP Server using lwIP
+/* EXAMPLE_START(pan_lwip_http_server): PAN - lwIP HTTP and DHCP Server 
  *
  * @text Bluetooth PAN is mainly used for Internet Tethering, where e.g. a mobile
  * phone provides internet connection to a laptop or a tablet.
@@ -242,7 +242,7 @@ int fs_open_custom(struct fs_file *file, const char *name){
     if (*name != '/') return 0;
     uint32_t file_size = btstack_atoi(&name[1]);
     if (file_size > 0) {
-        printf("Serving '%s' with %u bytes\n", name, file_size);
+        printf("Serving '%s' with %"PRIu32" bytes\n", name, file_size);
         /* initialize fs_file correctly */
         memset(file, 0, sizeof(struct fs_file));
         file->len = file_size;

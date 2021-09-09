@@ -37,12 +37,13 @@
 
 #define BTSTACK_FILE__ "sine_player.c"
 
-/*
- * Sine Playback to test and validate audio output with simple wave form
+/* EXAMPLE_START(audio_duplex): Audio Driver - Play Sine 
  *
+ * @text  Play sine to test and validate audio output with simple wave form.
  */
 
 #include "btstack.h"
+#include <stdio.h>
 
 #define TABLE_SIZE_441HZ            100
 
@@ -89,3 +90,5 @@ int btstack_main(int argc, const char * argv[]){
 
     return 0;
 }
+
+/* EXAMPLE_END */

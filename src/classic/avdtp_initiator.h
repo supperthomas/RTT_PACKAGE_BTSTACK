@@ -35,9 +35,7 @@
  *
  */
 
-/*
- * avdtp_int.h
- * 
+/**
  * Audio/Video Distribution Transport Protocol - Initiator Role
  *
  */
@@ -53,7 +51,8 @@ extern "C" {
 #endif
 
 void avdtp_initiator_stream_config_subsm(avdtp_connection_t *connection, uint8_t *packet, uint16_t size, int offset);
-void avdtp_initiator_stream_config_subsm_run(avdtp_connection_t *connection);
+void avdtp_initiator_stream_config_subsm_handle_can_send_now_signaling(avdtp_connection_t *connection);
+void avdtp_initiator_stream_config_subsm_handle_can_send_now_stream_endpoint(avdtp_stream_endpoint_t *stream_endpoint);
 
 #if defined __cplusplus
 }

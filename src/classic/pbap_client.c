@@ -264,7 +264,6 @@ static void pbap_handle_can_send_now(void){
     uint8_t  challenge_response[36];
     int i;
     uint16_t phone_number_len;
-    int done;
 
     MD5_CTX md5_ctx;
 
@@ -396,7 +395,7 @@ static void pbap_handle_can_send_now(void){
                     }
                 }
                 if (pbap_client->phone_number){
-                    // Search by phpone number
+                    // Search by phone number
                     phone_number_len = btstack_min(PBAP_MAX_PHONE_NUMBER_LEN, strlen(pbap_client->phone_number));
                     application_parameters[i++] = PBAP_APPLICATION_PARAMETER_SEARCH_VALUE;
                     application_parameters[i++] = phone_number_len;
@@ -425,10 +424,26 @@ static void pbap_handle_can_send_now(void){
                 }
                 goep_client_header_add_name(pbap_client->goep_cid, pbap_client->vcard_name);
                 goep_client_header_add_type(pbap_client->goep_cid, pbap_vcard_entry_type);
+                // TODO: support property selector
+                // TODO: support format
                 i = 0;
-                if (i){
-                    // TODO: support property selector
-                    // TODO: support format
+                uint32_t property_selector_lower = 0;
+                uint32_t property_selector_higher = 0;
+                if (strncmp(pbap_client->vcard_name, "X-BT-UID:", 9) == 0) {
+                    property_selector_lower = 1U << 31;
+                }
+                if (strncmp(pbap_client->vcard_name, "X-BT-UCI:", 9) == 0) {
+                    property_selector_lower = 1U << 30;
+                }
+                if (property_selector_lower != 0){
+                    application_parameters[i++] = PBAP_APPLICATION_PARAMETER_PROPERTY_SELECTOR;
+                    application_parameters[i++] = 8;
+                    big_endian_store_32(application_parameters, i, property_selector_higher);
+                    i += 4;
+                    big_endian_store_32(application_parameters, i, property_selector_lower);
+                    i += 4;
+                }
+                if (i > 0){
                     goep_client_header_add_application_parameters(pbap_client->goep_cid, &application_parameters[0], i);
                 }
                 pbap_client->state = PBAP_W4_GET_CARD_ENTRY_COMPLETE;
@@ -463,11 +478,8 @@ static void pbap_handle_can_send_now(void){
                 pbap_client->set_path_offset++;  
             }
 
-            // done?
-            done = pbap_client->current_folder[pbap_client->set_path_offset] == '\0';
-
             // status
-            log_info("Path element '%s', done %u", path_element, done);
+            log_info("Path element '%s'", path_element);
 
             goep_client_request_create_set_path(pbap_client->goep_cid, 1 << 1); // Don’t create directory
             goep_client_header_add_name(pbap_client->goep_cid, (const char *) path_element); // next element
@@ -482,10 +494,8 @@ static void pbap_handle_can_send_now(void){
 }
 
 static void pbap_parse_authentication_challenge(pbap_client_t * context, const uint8_t * challenge_data, uint16_t challenge_len){
-    // printf("Challenge:  ");
-    // printf_hexdump(challenge_data, challenge_len);
     int i;
-    // uint8_t charset_code = 0;
+
     for (i=0 ; i<challenge_len ; ){
         int tag = challenge_data[i];
         int len = challenge_data[i + 1];
@@ -496,18 +506,16 @@ static void pbap_parse_authentication_challenge(pbap_client_t * context, const u
                     log_error("Invalid OBEX digest len %u", len);
                     return;
                 }
-                (void)memcpy(context->authentication_nonce,
-                             &challenge_data[i], 16);
-                // printf("Nonce: ");
-                // printf_hexdump(context->authentication_nonce, 16);
+                (void)memcpy(context->authentication_nonce, &challenge_data[i], 16);
                 break;
             case 1:
                 context->authentication_options = challenge_data[i];
-                // printf("Options %u\n", context->authentication_options);
                 break;
             case 2:
                 // TODO: handle charset
                 // charset_code = challenge_data[i];
+                break;
+            default:
                 break;
         }
         i += len;
@@ -590,6 +598,7 @@ static void pbap_client_process_vcard_listing(uint8_t *packet, uint16_t size){
             int handle_found = 0;
             char name[PBAP_MAX_NAME_LEN];
             char handle[PBAP_MAX_HANDLE_LEN];
+            uint16_t char_len;
             while (data_len--){
                 yxml_ret_t r = yxml_parse(&pbap_client->xml_parser, *data++);
                 switch (r){
@@ -618,13 +627,15 @@ static void pbap_client_process_vcard_listing(uint8_t *packet, uint16_t size){
                     case YXML_ATTRVAL:
                         if (name_found) {
                             // "In UTF-8, characters from the U+0000..U+10FFFF range (the UTF-16 accessible range) are encoded using sequences of 1 to 4 octets."
-                            if ((strlen(name) + 4 + 1) >= sizeof(name)) break;
+                            char_len = strlen(pbap_client->xml_parser.data);
+                            if ((strlen(name) + char_len + 1) >= sizeof(name)) break;
                             strcat(name, pbap_client->xml_parser.data);
                             break;
                         }
                         if (handle_found) {
                             // "In UTF-8, characters from the U+0000..U+10FFFF range (the UTF-16 accessible range) are encoded using sequences of 1 to 4 octets."
-                            if ((strlen(handle) + 4 + 1) >= sizeof(handle)) break;
+                            char_len = strlen(pbap_client->xml_parser.data);
+                            if ((strlen(handle) + char_len + 1) >= sizeof(handle)) break;
                             strcat(handle, pbap_client->xml_parser.data);
                             break;
                         }
@@ -672,6 +683,8 @@ static void pbap_packet_handler_hci(uint8_t *packet, uint16_t size){
                 case GOEP_SUBEVENT_CAN_SEND_NOW:
                     pbap_handle_can_send_now();
                     break;
+                default:
+                    break;
             }
             break;
         default:
@@ -684,7 +697,6 @@ static void pbap_packet_handler_goep(uint8_t *packet, uint16_t size){
     int wait_for_user = 0;
 
     // TODO: handle chunked data
-    // obex_dump_packet(goep_client_get_request_opcode(pbap_client->goep_cid), packet, size);
     switch (pbap_client->state){
         case PBAP_W4_CONNECT_RESPONSE:
             switch (packet[0]){
@@ -901,6 +913,9 @@ void pbap_client_init(void){
     pbap_client->cid = 1;
 }
 
+void pbap_client_deinit(void){
+}
+
 uint8_t pbap_connect(btstack_packet_handler_t handler, bd_addr_t addr, uint16_t * out_cid){
     if (pbap_client->state != PBAP_INIT) return BTSTACK_MEMORY_ALLOC_FAILED;
 
@@ -1000,7 +1015,6 @@ uint8_t pbap_abort(uint16_t pbap_cid){
     UNUSED(pbap_cid);
     log_info("abort current operation, state 0x%02x", pbap_client->state);
     pbap_client->abort_operation = 1;
-    goep_client_request_can_send_now(pbap_client->goep_cid);
     return 0;
 }
 

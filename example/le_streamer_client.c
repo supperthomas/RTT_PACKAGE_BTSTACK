@@ -42,7 +42,10 @@
  */
 
 // *****************************************************************************
-/* EXAMPLE_START(le_streamer_client): Connects to 'LE Streamer' and subscribes to test characteristic
+/* EXAMPLE_START(le_streamer_client): Performance - Stream Data over GATT (Client)
+ * 
+ * @text Connects to 'LE Streamer' and subscribes to test characteristic
+ *
  */
 // *****************************************************************************
 
@@ -182,15 +185,12 @@ static int advertisement_report_contains_name(const char * name, uint8_t * adver
         uint8_t data_type    = ad_iterator_get_data_type(&context);
         uint8_t data_size    = ad_iterator_get_data_len(&context);
         const uint8_t * data = ad_iterator_get_data(&context);
-        int i;
         switch (data_type){
             case BLUETOOTH_DATA_TYPE_SHORTENED_LOCAL_NAME:
             case BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME:
-                // compare common prefix
-                for (i=0; i<data_size && i<name_len;i++){
-                    if (data[i] != name[i]) break;
-                }
-                // prefix match
+                // compare prefix
+                if (data_size < name_len) break;
+                if (memcmp(data, name, name_len) == 0) return 1;
                 return 1;
             default:
                 break;
@@ -205,6 +205,7 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
     UNUSED(size);
 
     uint16_t mtu;
+    uint8_t att_status;
     switch(state){
         case TC_W4_SERVICE_RESULT:
             switch(hci_event_packet_get_type(packet)){
@@ -213,8 +214,9 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
                     gatt_event_service_query_result_get_service(packet, &le_streamer_service);
                     break;
                 case GATT_EVENT_QUERY_COMPLETE:
-                    if (packet[4] != 0){
-                        printf("SERVICE_QUERY_RESULT - Error status %x.\n", packet[4]);
+                    att_status = gatt_event_query_complete_get_att_status(packet);
+                    if (att_status != ATT_ERROR_SUCCESS){
+                        printf("SERVICE_QUERY_RESULT - Error status %x.\n", att_status);
                         gap_disconnect(connection_handle);
                         break;  
                     } 
@@ -234,8 +236,9 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
                     gatt_event_characteristic_query_result_get_characteristic(packet, &le_streamer_characteristic_rx);
                     break;
                 case GATT_EVENT_QUERY_COMPLETE:
-                    if (packet[4] != 0){
-                        printf("CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", packet[4]);
+                    att_status = gatt_event_query_complete_get_att_status(packet);
+                    if (att_status != ATT_ERROR_SUCCESS){
+                        printf("CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", att_status);
                         gap_disconnect(connection_handle);
                         break;  
                     } 
@@ -255,8 +258,9 @@ static void handle_gatt_client_event(uint8_t packet_type, uint16_t channel, uint
                     gatt_event_characteristic_query_result_get_characteristic(packet, &le_streamer_characteristic_tx);
                     break;
                 case GATT_EVENT_QUERY_COMPLETE:
-                    if (packet[4] != 0){
-                        printf("CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", packet[4]);
+                    att_status = gatt_event_query_complete_get_att_status(packet);
+                    if (att_status != ATT_ERROR_SUCCESS){
+                        printf("CHARACTERISTIC_QUERY_RESULT - Error status %x.\n", att_status);
                         gap_disconnect(connection_handle);
                         break;  
                     } 

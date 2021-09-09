@@ -35,10 +35,8 @@
  *
  */
 
-/*
- * avrcp.h
- * 
- * Audio/Video Remote Control Profile
+/**
+ * Audio/Video Remote Control Profile (AVRCP)
  *
  */
 
@@ -111,6 +109,14 @@ typedef enum {
     AVRCP_END_PACKET
 } avrcp_packet_type_t;
 
+
+typedef enum {
+    AVCTP_SINGLE_PACKET= 0,
+    AVCTP_START_PACKET    ,
+    AVCTP_CONTINUE_PACKET ,
+    AVCTP_END_PACKET
+} avctp_packet_type_t;
+
 typedef enum {
     AVRCP_COMMAND_FRAME = 0,
     AVRCP_RESPONSE_FRAME    
@@ -132,6 +138,7 @@ typedef enum {
     AVRCP_MEDIA_ATTR_GENRE,
     AVRCP_MEDIA_ATTR_SONG_LENGTH_MS,
     AVRCP_MEDIA_ATTR_DEFAULT_COVER_ART,
+    AVRCP_MEDIA_ATTR_RESERVED = 0x0009,
     AVRCP_MEDIA_ATTR_NONE = 0x7FFF
 } avrcp_media_attribute_id_t;
 
@@ -236,29 +243,78 @@ typedef enum {
     AVRCP_CMD_OPCODE_UNDEFINED = 0xFF
 } avrcp_command_opcode_t;
 
+// See "AVC-Panel Subunit.pdf", Chapter 9.4 "PASS THROUGH control command"
+// Using subset defined in "AVRCP_v1.5.pdf", Chapter 4.6.1 "Support Level in TG"
 typedef enum {
-    AVRCP_OPERATION_ID_CHANNEL_UP = 0x30,
-    AVRCP_OPERATION_ID_CHANNEL_DOWN = 0x31,
     AVRCP_OPERATION_ID_SELECT = 0x00,
     AVRCP_OPERATION_ID_UP = 0x01,
     AVRCP_OPERATION_ID_DOWN = 0x02,
     AVRCP_OPERATION_ID_LEFT = 0x03,
     AVRCP_OPERATION_ID_RIGHT = 0x04,
+    AVRCP_OPERATION_ID_RIGHT_UP = 0x05,
+    AVRCP_OPERATION_ID_RIGHT_DOWN = 0x06,
+    AVRCP_OPERATION_ID_LEFT_UP = 0x07,
+    AVRCP_OPERATION_ID_LEFT_DOWN = 0x07,
     AVRCP_OPERATION_ID_ROOT_MENU = 0x09,
+    AVRCP_OPERATION_ID_SETUP_MENU = 0x0A,
+    AVRCP_OPERATION_ID_CONTENTS_MENU = 0x0B,
+    AVRCP_OPERATION_ID_FAVORITE_MENU = 0x0C,
+    AVRCP_OPERATION_ID_EXIT = 0x0D,
+    AVRCP_OPERATION_ID_RESERVED_1 = 0x0E,
 
+    AVRCP_OPERATION_ID_0 = 0x20,
+    AVRCP_OPERATION_ID_1 = 0x21,
+    AVRCP_OPERATION_ID_2 = 0x22,
+    AVRCP_OPERATION_ID_3 = 0x23,
+    AVRCP_OPERATION_ID_4 = 0x24,
+    AVRCP_OPERATION_ID_5 = 0x25,
+    AVRCP_OPERATION_ID_6 = 0x26,
+    AVRCP_OPERATION_ID_7 = 0x27,
+    AVRCP_OPERATION_ID_8 = 0x28,
+    AVRCP_OPERATION_ID_9 = 0x29,
+    AVRCP_OPERATION_ID_DOT   = 0x2A,
+    AVRCP_OPERATION_ID_ENTER = 0x2B,
+    AVRCP_OPERATION_ID_CLEAR = 0x2C,
+    AVRCP_OPERATION_ID_RESERVED_2 = 0x2D,
+
+    AVRCP_OPERATION_ID_CHANNEL_UP = 0x30,
+    AVRCP_OPERATION_ID_CHANNEL_DOWN = 0x31,
+    AVRCP_OPERATION_ID_PREVIOUS_CHANNEL = 0x32,
+    AVRCP_OPERATION_ID_SOUND_SELECT = 0x33,
+    AVRCP_OPERATION_ID_INPUT_SELECT = 0x34,
+    AVRCP_OPERATION_ID_DISPLAY_INFORMATION = 0x35,
+    AVRCP_OPERATION_ID_HELP = 0x36,
+    AVRCP_OPERATION_ID_PAGE_UP = 0x37,
+    AVRCP_OPERATION_ID_PAGE_DOWN = 0x38,
+    AVRCP_OPERATION_ID_RESERVED_3 = 0x39,
+    
     AVRCP_OPERATION_ID_SKIP = 0x3C,
+    
+    AVRCP_OPERATION_ID_POWER = 0x40,
     AVRCP_OPERATION_ID_VOLUME_UP = 0x41,
     AVRCP_OPERATION_ID_VOLUME_DOWN = 0x42,
     AVRCP_OPERATION_ID_MUTE = 0x43,
-    
     AVRCP_OPERATION_ID_PLAY = 0x44,
     AVRCP_OPERATION_ID_STOP = 0x45,
     AVRCP_OPERATION_ID_PAUSE = 0x46,
+    AVRCP_OPERATION_ID_RECORD = 0x47,
     AVRCP_OPERATION_ID_REWIND = 0x48,
     AVRCP_OPERATION_ID_FAST_FORWARD = 0x49,
+    AVRCP_OPERATION_ID_EJECT = 0x4A,
     AVRCP_OPERATION_ID_FORWARD = 0x4B,
     AVRCP_OPERATION_ID_BACKWARD = 0x4C,
-    AVRCP_OPERATION_ID_UNDEFINED = 0xFF
+    AVRCP_OPERATION_ID_RESERVED_4 = 0x4D,
+
+    AVRCP_OPERATION_ID_ANGLE = 0x50,
+    AVRCP_OPERATION_ID_SUBPICTURE = 0x51,
+    AVRCP_OPERATION_ID_RESERVED_5 = 0x52,
+
+    AVRCP_OPERATION_ID_F1 = 0x71,
+    AVRCP_OPERATION_ID_F2 = 0x72,
+    AVRCP_OPERATION_ID_F3 = 0x73,
+    AVRCP_OPERATION_ID_F4 = 0x74,
+    AVRCP_OPERATION_ID_F5 = 0x75,
+    AVRCP_OPERATION_ID_RESERVED_6 = 0x76
 } avrcp_operation_id_t;
 
 typedef enum{
@@ -294,6 +350,7 @@ typedef enum {
 
 typedef enum {
     AVCTP_CONNECTION_IDLE,
+    AVCTP_CONNECTION_W2_SEND_SDP_QUERY,
     AVCTP_CONNECTION_W4_SDP_QUERY_COMPLETE,
     AVCTP_CONNECTION_W4_ERTM_CONFIGURATION,
     AVCTP_CONNECTION_W4_L2CAP_CONNECTED,
@@ -373,7 +430,7 @@ typedef struct {
     avctp_connection_state_t state;
     bool     wait_to_send;
     uint8_t  transaction_label;
-    // used for AVCTP fragmentation
+    // used for fragmentation
     uint8_t  num_packets;
     uint16_t bytes_to_send;
 
@@ -448,6 +505,8 @@ typedef struct {
     uint16_t l2cap_signaling_cid;
     uint16_t l2cap_mtu;
     uint16_t avrcp_cid;
+    hci_con_handle_t con_handle;
+    
     bool incoming_declined;
 
     uint16_t avrcp_browsing_cid;
@@ -464,8 +523,15 @@ typedef struct {
     uint8_t transport_header;
     uint16_t invalid_pid;
 
+    // transaction id 
+    uint8_t transaction_id_counter;
+
+    // limit number of pending commands to transaction id window size
+    uint8_t last_confirmed_transaction_id;
+
     // command
-    uint8_t transaction_label;
+    uint8_t transaction_id;
+    
     avrcp_command_opcode_t command_opcode;
     avrcp_command_type_t command_type;
     avrcp_subunit_type_t subunit_type;
@@ -483,7 +549,9 @@ typedef struct {
 
     btstack_timer_source_t retry_timer;
     btstack_timer_source_t press_and_hold_cmd_timer;
-    uint8_t  continuous_fast_forward_cmd;
+    bool     press_and_hold_cmd_active;
+    bool     press_and_hold_cmd_release;
+
     uint16_t notifications_enabled;
     uint16_t notifications_to_register;
     uint16_t notifications_to_deregister; 
@@ -544,6 +612,12 @@ typedef struct {
     uint8_t num_received_fragments;
 
     uint8_t accept_response;
+
+#ifdef ENABLE_AVCTP_FRAGMENTATION
+    uint16_t avctp_reassembly_size;
+    uint8_t  avctp_reassembly_buffer[200];
+#endif
+
 } avrcp_connection_t;
 
 typedef struct {
@@ -555,17 +629,6 @@ typedef struct {
 
     btstack_packet_handler_t browsing_avrcp_callback;
     btstack_packet_handler_t browsing_packet_handler;
-
-    // SDP query
-    bd_addr_t remote_addr;
-    uint8_t  parse_sdp_record;
-    uint32_t record_id;
-    uint16_t avrcp_cid;
-    uint16_t avrcp_l2cap_psm;
-    uint16_t avrcp_version;
-
-    uint16_t browsing_l2cap_psm;
-    uint16_t browsing_version;
 } avrcp_context_t; 
 
 
@@ -594,9 +657,9 @@ avrcp_browsing_connection_t * avrcp_get_browsing_connection_for_l2cap_cid_for_ro
 
 void avrcp_request_can_send_now(avrcp_connection_t * connection, uint16_t l2cap_cid);
 uint16_t avrcp_get_next_cid(avrcp_role_t role);
+btstack_linked_list_t avrcp_get_connections(void);
 
-uint8_t avrcp_start_sdp_query(btstack_packet_handler_t packet_handler, const uint8_t *remote_addr, uint16_t cid);
-uint16_t avrcp_sdp_sdp_query_browsing_l2cap_psm(void);
+uint16_t avrcp_sdp_query_browsing_l2cap_psm(void);
 void avrcp_handle_sdp_client_query_attribute_value(uint8_t *packet);
 avrcp_connection_t * get_avrcp_connection_for_browsing_cid_for_role(avrcp_role_t role, uint16_t browsing_cid);
 avrcp_connection_t * get_avrcp_connection_for_browsing_l2cap_cid_for_role(avrcp_role_t role, uint16_t browsing_l2cap_cid);
@@ -634,56 +697,11 @@ uint8_t avrcp_connect(bd_addr_t remote_addr, uint16_t * avrcp_cid);
 uint8_t avrcp_disconnect(uint16_t avrcp_cid);
 
 /**
- * @brief Set up AVRCP Browsing service
+ * @brief De-Init AVRCP
  */
-void avrcp_browsing_init(void);
-
-/**
- * @brief Register callback for the AVRCP Browsing Controller client. 
- * @param callback
- */
-void avrcp_browsing_register_packet_handler(btstack_packet_handler_t callback);
-
-/**
- * @brief   Connect to AVRCP Browsing service on a remote device, emits AVRCP_SUBEVENT_BROWSING_CONNECTION_ESTABLISHED with status
- * @param   remote_addr
- * @param   ertm_buffer
- * @param   ertm_buffer_size
- * @param   ertm_config
- * @param   avrcp_browsing_cid  outgoing parameter, valid if status == ERROR_CODE_SUCCESS
- * @returns status     
- */
-uint8_t avrcp_browsing_connect(bd_addr_t remote_addr, uint8_t * ertm_buffer, uint32_t ertm_buffer_size, l2cap_ertm_config_t * ertm_config, uint16_t * avrcp_browsing_cid);
-
-/**
- * @brief Configure incoming connection for Browsing Service.
- * @param avrcp_browsing_cid
- * @param ertm_buffer
- * @param ertm_buffer_size
- * @param ertm_config
- * @returns status
- */
-uint8_t avrcp_browsing_configure_incoming_connection(uint16_t avrcp_browsing_cid, uint8_t * ertm_buffer, uint32_t ertm_buffer_size, l2cap_ertm_config_t * ertm_config);
-
-/**
- * @brief Decline incoming connection Browsing Service.
- * @param avrcp_browsing_cid
- * @returns status
- */
-uint8_t avrcp_browsing_decline_incoming_connection(uint16_t avrcp_browsing_cid);
-
-/**
- * @brief   Disconnect from AVRCP Browsing service
- * @param   avrcp_browsing_cid
- * @returns status
- */
-uint8_t avrcp_browsing_disconnect(uint16_t avrcp_browsing_cid);
+void avrcp_deinit(void);
 
 /* API_END */
-
-void avrcp_browsing_register_controller_packet_handler(btstack_packet_handler_t callback);
-void avrcp_browsing_register_target_packet_handler(btstack_packet_handler_t callback);
-void avrcp_browsing_request_can_send_now(avrcp_browsing_connection_t * connection, uint16_t l2cap_cid);
 
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
 void avrcp_init_fuzz(void);

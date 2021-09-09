@@ -65,13 +65,12 @@
 #define HFP_GSM_MAX_CALL_NUMBER_SIZE 25
 
 static hfp_gsm_call_t gsm_calls[HFP_GSM_MAX_NR_CALLS]; 
-static hfp_callsetup_status_t callsetup_status = HFP_CALLSETUP_STATUS_NO_CALL_SETUP_IN_PROGRESS;
+static hfp_callsetup_status_t callsetup_status;
 
 static uint8_t clip_type;
 static char clip_number[HFP_GSM_MAX_CALL_NUMBER_SIZE];
 static char last_dialed_number[HFP_GSM_MAX_CALL_NUMBER_SIZE];
 
-static void hfp_gsm_handler(hfp_ag_call_event_t event, uint8_t index, uint8_t type, const char * number);
 static inline int get_number_active_calls(void);
 
 static void set_callsetup_status(hfp_callsetup_status_t status){
@@ -148,7 +147,7 @@ static void free_call_slot(int index_in_table){
 }
 
 void hfp_gsm_init(void){
-    set_callsetup_status(HFP_CALLSETUP_STATUS_NO_CALL_SETUP_IN_PROGRESS);
+    callsetup_status = HFP_CALLSETUP_STATUS_NO_CALL_SETUP_IN_PROGRESS;
     clip_type = 0;
     memset(clip_number, 0, sizeof(clip_number));
     memset(last_dialed_number, 0, sizeof(last_dialed_number));
@@ -157,7 +156,10 @@ void hfp_gsm_init(void){
     for (i = 0; i < HFP_GSM_MAX_NR_CALLS; i++){
         free_call_slot(i);
     }
-} 
+}
+
+void hfp_gsm_deinit(void){
+}
 
 static int get_number_calls_with_enhanced_status(hfp_enhanced_call_status_t enhanced_status){
     int i, count = 0;
@@ -283,6 +285,11 @@ char * hfp_gsm_last_dialed_number(void){
     return &last_dialed_number[0];
 }
 
+void hfp_gsm_set_last_dialed_number(const char* number){
+    strncpy(last_dialed_number, number, sizeof(last_dialed_number));
+    last_dialed_number[sizeof(last_dialed_number) - 1] = 0;
+}
+
 hfp_gsm_call_t * hfp_gsm_call(int call_index){
     int i;
 
@@ -363,23 +370,7 @@ int hfp_gsm_call_possible(void){
     return get_number_none_calls() > 0;
 }
 
-void hfp_gsm_handle_event(hfp_ag_call_event_t event){
-    hfp_gsm_handler(event, 0, 0, NULL);
-}
-
-void hfp_gsm_handle_event_with_clip(hfp_ag_call_event_t event, uint8_t type, const char * number){
-    hfp_gsm_handler(event, 0, type, number);
-}
-
-void hfp_gsm_handle_event_with_call_index(hfp_ag_call_event_t event, uint8_t index){
-    hfp_gsm_handler(event, index, 0, NULL);
-}
-
-void hfp_gsm_handle_event_with_call_number(hfp_ag_call_event_t event, const char * number){
-    hfp_gsm_handler(event, 0, 0, number);
-}
-
-static void hfp_gsm_handler(hfp_ag_call_event_t event, uint8_t index, uint8_t type, const char * number){
+void hfp_gsm_handler(hfp_ag_call_event_t event, uint8_t index, uint8_t type, const char * number){
     int next_free_slot = get_next_free_slot();
     int current_call_index = get_active_call_index();
     int initiated_call_index = get_initiated_call_index();
@@ -387,7 +378,8 @@ static void hfp_gsm_handler(hfp_ag_call_event_t event, uint8_t index, uint8_t ty
     int i;
 
     switch (event){
-        case HFP_AG_OUTGOING_CALL_INITIATED:
+        case HFP_AG_OUTGOING_CALL_INITIATED_BY_HF:
+        case HFP_AG_OUTGOING_CALL_INITIATED_BY_AG:
         case HFP_AG_OUTGOING_REDIAL_INITIATED:
             if (next_free_slot == -1){
                 log_error("gsm: max call nr exceeded");
@@ -491,6 +483,8 @@ static void hfp_gsm_handler(hfp_ag_call_event_t event, uint8_t index, uint8_t ty
                     break;
                 case HFP_CALL_STATUS_ACTIVE_OR_HELD_CALL_IS_PRESENT:
                     delete_call(current_call_index);
+                    break;
+                default:
                     break;
             }
             break;

@@ -43,7 +43,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "btstack.h"
+#include "btstack_debug.h"
+#include "btstack_event.h"
+#include "btstack_run_loop.h"
+#include "btstack_util.h"
 
 #include "mesh/mesh_crypto.h"
 #include "mesh/pb_adv.h"
@@ -234,6 +237,7 @@ static void provisioning_send_data(uint16_t the_pb_adv_cid){
 
 typedef enum {
     PROVISIONER_IDLE,
+    PROVISIONER_W4_LINK_OPENED,
     PROVISIONER_SEND_INVITE,
     PROVISIONER_W4_CAPABILITIES,
     PROVISIONER_W4_AUTH_CONFIGURATION,
@@ -643,11 +647,21 @@ static void provisioning_handle_pdu(uint8_t packet_type, uint16_t channel, uint8
 
     switch (packet_type){
         case HCI_EVENT_PACKET:
-            if (packet[0] != HCI_EVENT_MESH_META)  break;
-            switch (packet[2]){
+            if (hci_event_packet_get_type(packet) != HCI_EVENT_MESH_META)  break;
+            
+            switch (hci_event_mesh_meta_get_subevent_code(packet)){
                 case MESH_SUBEVENT_PB_TRANSPORT_LINK_OPEN:
-                    printf("Link opened, sending Invite\n");
-                    provisioning_handle_link_opened(pb_adv_cid);
+                    if (provisioner_state != PROVISIONER_W4_LINK_OPENED) break;
+                    switch (mesh_subevent_pb_transport_link_open_get_status(packet)) {
+                        case ERROR_CODE_SUCCESS:
+                            printf("Link opened, sending Invite\n");
+                            provisioning_handle_link_opened(pb_adv_cid);
+                            break;
+                        default:
+                            printf("Link open failed, abort\n");
+                            provisioning_done();
+                            break;
+                    }
                     break;
                 case MESH_SUBEVENT_PB_TRANSPORT_PDU_SENT:
                     printf("Outgoing packet acked\n");
@@ -656,6 +670,8 @@ static void provisioning_handle_pdu(uint8_t packet_type, uint16_t channel, uint8
                 case MESH_SUBEVENT_PB_TRANSPORT_LINK_CLOSED:
                     printf("Link close, reset state\n");
                     provisioning_done();
+                    break;
+                default:
                     break;
             }
             break;
@@ -724,7 +740,7 @@ static void prov_key_generated(void * arg){
 void provisioning_provisioner_init(void){
     pb_adv_cid = MESH_PB_TRANSPORT_INVALID_CID;
     pb_adv_init();
-    pb_adv_register_packet_handler(&provisioning_handle_pdu);
+    pb_adv_register_provisioner_packet_handler(&provisioning_handle_pdu);
 }
 
 void provisioning_provisioner_register_packet_handler(btstack_packet_handler_t packet_handler){
@@ -736,6 +752,7 @@ uint16_t provisioning_provisioner_start_provisioning(const uint8_t * device_uuid
     btstack_crypto_ecc_p256_generate_key(&prov_ecc_p256_request, prov_ec_q, &prov_key_generated, NULL);
 
     if (pb_adv_cid == MESH_PB_TRANSPORT_INVALID_CID) {
+        provisioner_state = PROVISIONER_W4_LINK_OPENED;
         pb_adv_cid = pb_adv_create_link(device_uuid);
     }
     return pb_adv_cid;

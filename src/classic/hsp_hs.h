@@ -35,12 +35,11 @@
  *
  */
 
-// *****************************************************************************
-//
-// HSP Headset
-//
-// *****************************************************************************
 
+/**
+ * @title HSP Headset
+ *
+ */
 
 #ifndef btstack_hsp_hs_h
 #define btstack_hsp_hs_h
@@ -169,6 +168,17 @@ void hsp_hs_enable_custom_indications(int enable);
  * @param result 
  */
 int hsp_hs_send_result(const char * result);
+
+/**
+ * @brief Set packet types used for incoming SCO connection requests
+ * @param common single packet_types: SCO_PACKET_TYPES_*
+ */
+void hsp_hs_set_sco_packet_types(uint16_t packet_types);
+
+/**
+ * @brief De-Init HSP AG
+ */
+void hsp_hs_deinit(void);
 
 /* API_END */
 

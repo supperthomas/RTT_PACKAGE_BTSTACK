@@ -39,7 +39,7 @@
  
 
 // *****************************************************************************
-/* EXAMPLE_START(gap_le_advertisements): GAP LE Advertisements Dumper
+/* EXAMPLE_START(gap_le_advertisements): GAP LE Advertisements Scanner
  *
  * @text This example shows how to scan and parse advertisements.
  * 
@@ -66,22 +66,12 @@ static btstack_packet_callback_registration_t hci_event_callback_registration;
 
 /* LISTING_START(GAPLEAdvSetup): Setting up GAP LE client for receiving advertisements */
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
-static const uint8_t adv_data[] = {
-    // Flags general discoverable, BR/EDR not supported
-    0x02, 0x01, 0x06,
-    // Name
-    0x05, 0x09, 't', 'd', 'e', 's', 
-    // Service Solicitation, 128-bit UUIDs - ANCS (little endian)
-    0x11,0x15,0xD0,0x00,0x2D,0x12,0x1E,0x4B,0x0F,0xA4,0x99,0x4E,0xCE,0xB5,0x31,0xF4,0x05,0x79
-};
-static uint8_t adv_data_len = sizeof(adv_data);
+
 static void gap_le_advertisements_setup(void){
     // Active scanning, 100% (scan interval = scan window)
-//    gap_set_scan_parameters(1,48,48);
-//    gap_start_scan(); 
-    gap_advertisements_set_data(adv_data_len, (uint8_t*) adv_data);
-    gap_advertisements_enable(1);
-    
+    gap_set_scan_parameters(1,48,48);
+    gap_start_scan(); 
+
     hci_event_callback_registration.callback = &packet_handler;
     hci_add_event_handler(&hci_event_callback_registration);
 }

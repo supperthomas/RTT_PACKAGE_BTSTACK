@@ -35,12 +35,11 @@
  *
  */
 
-/*
- * a2dp_sink.h
- * 
- * Advanced Audio Distribution Transport Profile (A2DP) Sink
+/**
+ * @title A2DP Sink
  *
- * A2DP Sink is a device that accepts streamed media data.  
+ * Audio/Video Distribution Transport Protocol A2DP Sink is a device that accepts streamed media data.  
+ *
  */
 
 #ifndef A2DP_SINK_H
@@ -81,9 +80,15 @@ void a2dp_sink_init(void);
  *
  * @return local_stream_endpoint 	
  */
-avdtp_stream_endpoint_t *  a2dp_sink_create_stream_endpoint(avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, 
-	uint8_t * codec_capabilities, uint16_t codec_capabilities_len,
-	uint8_t * codec_configuration, uint16_t codec_configuration_len);
+avdtp_stream_endpoint_t *  a2dp_sink_create_stream_endpoint(avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type,
+                                                            const uint8_t *codec_capabilities, uint16_t codec_capabilities_len,
+                                                            uint8_t * codec_configuration, uint16_t codec_configuration_len);
+
+/**
+ *  @brief Unregister stream endpoint and free it's memory
+ *  @param stream_endpoint created by a2dp_sink_create_stream_endpoint
+ */
+void a2dp_sink_finalize_stream_endpoint(avdtp_stream_endpoint_t * stream_endpoint);
 
 /**
  * @brief Register callback for the A2DP Sink client. It will receive following subevents of HCI_EVENT_A2DP_META HCI event type: 
@@ -121,6 +126,11 @@ uint8_t a2dp_sink_establish_stream(bd_addr_t remote, uint8_t local_seid, uint16_
  * @param a2dp_cid 			A2DP channel identifyer.
  */
 void a2dp_sink_disconnect(uint16_t a2dp_cid);
+
+/**
+ * @brief De-Init A2DP Sink device.
+ */
+void a2dp_sink_deinit(void);
 
 /* API_END */
 

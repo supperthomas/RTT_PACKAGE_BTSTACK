@@ -35,6 +35,13 @@
  *
  */
 
+/**
+ * @title GOEP Client 
+ *
+ * Communicate with remote OBEX server - General Object Exchange
+ *
+ */
+
 #ifndef GOEP_CLIENT_H
 #define GOEP_CLIENT_H
 
@@ -46,12 +53,6 @@ extern "C" {
 #include <string.h>
 
 #include "btstack_defines.h"
-
-//------------------------------------------------------------------------------------------------------------
-// goep_client.h
-//
-// Communicate with remote OBEX server - General Object Exchange
-//
 
 /* API_START */
 
@@ -235,6 +236,11 @@ void goep_client_body_add_static(uint16_t goep_cid, const uint8_t * data, uint32
  * @param daa 
  */
 int goep_client_execute(uint16_t goep_cid);
+
+/**
+ * @brief De-Init GOEP Client
+ */
+void goep_client_deinit(void);
 
 /* API_END */
 

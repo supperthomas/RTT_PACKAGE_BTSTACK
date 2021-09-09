@@ -43,27 +43,36 @@
  */
 
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef OCTAVE_OUTPUT
+#include <stdio.h>
+#endif
 
 #include "btstack_sbc_plc.h"
 #include "btstack_debug.h"
 
 #define SAMPLE_FORMAT int16_t
 
-static uint8_t indices0[] = { 0xad, 0x00, 0x00, 0xc5, 0x00, 0x00, 0x00, 0x00, 0x77, 0x6d,
-0xb6, 0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb, 0x6d, 0xdd, 0xb6, 0xdb, 0x77, 0x6d,
-0xb6, 0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb, 0x6d, 0xdd, 0xb6, 0xdb, 0x77, 0x6d,
-0xb6, 0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb, 0x6d, 0xdd, 0xb6, 0xdb, 0x77, 0x6d,
-0xb6, 0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb, 0x6c};
+// Zero Frame (57 bytes) with padding zeros to avoid out of bound reads
+static uint8_t indices0[] = {
+    0xad, 0x00, 0x00, 0xc5, 0x00, 0x00, 0x00, 0x00, 0x77, 0x6d,
+    0xb6, 0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb, 0x6d, 0xdd, 0xb6,
+    0xdb, 0x77, 0x6d, 0xb6, 0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb,
+    0x6d, 0xdd, 0xb6, 0xdb, 0x77, 0x6d, 0xb6, 0xdd, 0xdb, 0x6d,
+    0xb7, 0x76, 0xdb, 0x6d, 0xdd, 0xb6, 0xdb, 0x77, 0x6d, 0xb6,
+    0xdd, 0xdb, 0x6d, 0xb7, 0x76, 0xdb, 0x6c,
+    /*                padding            */   0x00, 0x00, 0x00
+};
 
 /* Raised COSine table for OLA */
 static float rcos[SBC_OLAL] = {
     0.99148655f,0.96623611f,0.92510857f,0.86950446f,
     0.80131732f,0.72286918f,0.63683150f,0.54613418f, 
     0.45386582f,0.36316850f,0.27713082f,0.19868268f, 
-    0.13049554f,0.07489143f,0.03376389f,0.00851345f};
+    0.13049554f,0.07489143f,0.03376389f,0.00851345f
+};
 
 // taken from http://www.codeproject.com/Articles/69941/Best-Square-Root-Method-Algorithm-Function-Precisi
 // Algorithm: Babylonian Method + some manipulations on IEEE 32 bit floating point representation
@@ -150,7 +159,6 @@ uint8_t * btstack_sbc_plc_zero_signal_frame(void){
 void btstack_sbc_plc_init(btstack_sbc_plc_state_t *plc_state){
     plc_state->nbf=0;
     plc_state->bestlag=0;
-    // printf("size\n");
     memset(plc_state->hist,0,sizeof(plc_state->hist));   
 }
 
@@ -193,7 +201,10 @@ static void octave_fprintf_array_int16(FILE * oct_file, char * name, int data_le
 static FILE * open_octave_file(btstack_sbc_plc_state_t *plc_state, octave_frame_type_t frame_type){
     char oct_file_name[1200];
     octave_frame_type = frame_type;
-    sprintf(oct_file_name, "%s_octave_plc_%d_%s.m", octave_base_name, plc_state->frame_count, octave_frame_type2str(octave_frame_type));
+    snprintf(oct_file_name, sizeof(oct_file_name), "%s_octave_plc_%d_%s.m",
+             octave_base_name, plc_state->frame_count,
+             octave_frame_type2str(octave_frame_type));
+    oct_file_name[sizeof(oct_file_name) - 1] = 0;
     
     FILE * oct_file = fopen(oct_file_name, "wb");
     if (oct_file == NULL){
@@ -207,7 +218,8 @@ static FILE * open_octave_file(btstack_sbc_plc_state_t *plc_state, octave_frame_
 static void octave_fprintf_plot_history_frame(btstack_sbc_plc_state_t *plc_state, FILE * oct_file, int frame_nr){
     char title[100];
     char hist_name[10];
-    sprintf(hist_name, "hist%d", plc_state->nbf);
+    snprintf(hist_name, sizeof(hist_name), "hist%d", plc_state->nbf);
+    hist_name[sizeof(hist_name) - 1] = 0;
             
     octave_fprintf_array_int16(oct_file, hist_name, SBC_LHIST, plc_state->hist);
 
@@ -232,7 +244,9 @@ static void octave_fprintf_plot_history_frame(btstack_sbc_plc_state_t *plc_state
     fprintf(oct_file, "pattern_window_x = x + %d;\n", SBC_LHIST - SBC_M);
     
     fprintf(oct_file, "hf = figure();\n");
-    sprintf(title, "PLC %s frame %d", octave_frame_type2str(octave_frame_type), frame_nr);
+    snprintf(title, sizeof(title), "PLC %s frame %d",
+             octave_frame_type2str(octave_frame_type), frame_nr);
+    title[sizeof(title) - 1] = 0;
     
     fprintf(oct_file, "hold on;\n");
     fprintf(oct_file, "h1 = plot(%s); \n", hist_name);
@@ -275,28 +289,34 @@ static void octave_fprintf_plot_history_frame(btstack_sbc_plc_state_t *plc_state
 static void octave_fprintf_plot_output(btstack_sbc_plc_state_t *plc_state, FILE * oct_file){
     if (!oct_file) return;
     char out_name[10];
-    sprintf(out_name, "out%d", plc_state->nbf);
+    snprintf(out_name, sizeof(out_name), "out%d", plc_state->nbf);
+    out_name[sizeof(out_name) - 1] = 0;
     int x0  = SBC_LHIST;
     int x1  = x0 + SBC_FS - 1;
     octave_fprintf_array_int16(oct_file, out_name, SBC_FS, plc_state->hist+x0);
     fprintf(oct_file, "h2 = plot(b(%d:%d), %s, 'cd'); \n", x0, x1, out_name);
 
     char rest_hist_name[10];
-    sprintf(rest_hist_name, "rest%d", plc_state->nbf);
+    snprintf(rest_hist_name, sizeof(rest_hist_name), "rest%d", plc_state->nbf);
+    rest_hist_name[sizeof(rest_hist_name) - 1] = 0;
     x0  = SBC_LHIST + SBC_FS;
     x1  = x0 + SBC_OLAL + SBC_RT - 1;
     octave_fprintf_array_int16(oct_file, rest_hist_name, SBC_OLAL + SBC_RT, plc_state->hist+x0);
     fprintf(oct_file, "h3 = plot(b(%d:%d), %s, 'kd'); \n", x0, x1, rest_hist_name);
 
     char new_hist_name[10];
-    sprintf(new_hist_name, "hist%d", plc_state->nbf);
+    snprintf(new_hist_name, sizeof(new_hist_name), "hist%d", plc_state->nbf);
+    new_hist_name[sizeof(new_hist_name) - 1] = 0;
     octave_fprintf_array_int16(oct_file, new_hist_name, SBC_LHIST, plc_state->hist);
     fprintf(oct_file, "h4 = plot(%s, 'r--'); \n", new_hist_name);
 
     fprintf(oct_file, "legend ([h1, h2, h3, h4], {\"hist\", \"out\", \"rest\", \"new hist\"}, \"location\", \"northeast\");\n ");
 
     char fig_name[1200];
-    sprintf(fig_name, "../%s_octave_plc_%d_%s", octave_base_name, plc_state->frame_count, octave_frame_type2str(octave_frame_type));
+    snprintf(fig_name, sizeof(fig_name), "../%s_octave_plc_%d_%s",
+             octave_base_name, plc_state->frame_count,
+             octave_frame_type2str(octave_frame_type));
+    fig_name[sizeof(fig_name) - 1] = 0;
     fprintf(oct_file, "print(hf, \"%s.jpg\", \"-djpg\");", fig_name);
 }
 #endif
@@ -304,12 +324,13 @@ static void octave_fprintf_plot_output(btstack_sbc_plc_state_t *plc_state, FILE 
 
 void btstack_sbc_plc_bad_frame(btstack_sbc_plc_state_t *plc_state, SAMPLE_FORMAT *ZIRbuf, SAMPLE_FORMAT *out){
     float val;
-    int   i = 0;
+    int   i;
     float sf = 1;
-    plc_state->nbf++;
-   
+
+    plc_state->nbf++;   
     plc_state->bad_frames_nr++;
     plc_state->frame_count++;
+
     if (plc_state->max_consecutive_bad_frames_nr < plc_state->nbf){
         plc_state->max_consecutive_bad_frames_nr = plc_state->nbf;
     }
@@ -334,7 +355,7 @@ void btstack_sbc_plc_bad_frame(btstack_sbc_plc_state_t *plc_state, SAMPLE_FORMAT
         // Compute Scale Factor to Match Amplitude of Substitution Packet to that of Preceding Packet
         sf = AmplitudeMatch(plc_state->hist, plc_state->bestlag);
         // printf("sf Apmlitude Match %f, new data %d, bestlag+M %d\n", sf, ZIRbuf[0], plc_state->hist[plc_state->bestlag]);
-        for (i=0;i<SBC_OLAL;i++){
+        for (i=0; i<SBC_OLAL; i++){
             float left  = ZIRbuf[i];
             float right = sf*plc_state->hist[plc_state->bestlag+i];
             val = (left*rcos[i]) + (right*rcos[SBC_OLAL-1-i]);
@@ -342,33 +363,33 @@ void btstack_sbc_plc_bad_frame(btstack_sbc_plc_state_t *plc_state, SAMPLE_FORMAT
             plc_state->hist[SBC_LHIST+i] = crop_sample(val);
         }
         
-        for (;i<SBC_FS;i++){
+        for (i=SBC_OLAL; i<SBC_FS; i++){
             val = sf*plc_state->hist[plc_state->bestlag+i]; 
             plc_state->hist[SBC_LHIST+i] = crop_sample(val);
         }
         
-        for (;i<(SBC_FS+SBC_OLAL);i++){
+        for (i=SBC_FS; i<(SBC_FS+SBC_OLAL); i++){
             float left  = sf*plc_state->hist[plc_state->bestlag+i];
             float right = plc_state->hist[plc_state->bestlag+i];
             val = (left*rcos[i-SBC_FS])+(right*rcos[SBC_OLAL-1-i+SBC_FS]);
             plc_state->hist[SBC_LHIST+i] = crop_sample(val);
         }
 
-        for (;i<(SBC_FS+SBC_RT+SBC_OLAL);i++){
+        for (i=(SBC_FS+SBC_OLAL); i<(SBC_FS+SBC_RT+SBC_OLAL); i++){
             plc_state->hist[SBC_LHIST+i] = plc_state->hist[plc_state->bestlag+i];
         }
     } else {
         // printf("succesive bad frame nr %d\n", plc_state->nbf);
-        for (;i<(SBC_FS+SBC_RT+SBC_OLAL);i++){
+        for (i=0; i<(SBC_FS+SBC_RT+SBC_OLAL); i++){
             plc_state->hist[SBC_LHIST+i] = plc_state->hist[plc_state->bestlag+i];
         }
     }
-    for (i=0;i<SBC_FS;i++){
+    for (i=0; i<SBC_FS; i++){
         out[i] = plc_state->hist[SBC_LHIST+i];
     }
         
    // shift the history buffer 
-    for (i=0;i<(SBC_LHIST+SBC_RT+SBC_OLAL);i++){
+    for (i=0; i<(SBC_LHIST+SBC_RT+SBC_OLAL); i++){
         plc_state->hist[i] = plc_state->hist[i+SBC_FS];
     }
 

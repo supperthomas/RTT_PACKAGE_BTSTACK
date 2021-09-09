@@ -35,8 +35,8 @@
  *
  */
 
-/*
- * btstack_crypto.h
+/**
+ * Crypto-related functions
  *
  * Central place for all crypto-related functions with completion callbacks to allow
  * using of MCU crypto peripherals or the Bluetooth controller
@@ -174,24 +174,24 @@ void btstack_crypto_aes128_cmac_generator(btstack_crypto_aes128_cmac_t * request
  * Calculate Cipher-based Message Authentication Code (CMAC) using AES128 and complete message
  * @param request
  * @param key (16 bytes)
- * @param len of message
+ * @param size of message
  * @param message
  * @param hash result
  * @param callback
  * @param callback_arg
  */
-void btstack_crypto_aes128_cmac_message(btstack_crypto_aes128_cmac_t * request, const uint8_t * key, uint16_t len, const uint8_t * message,  uint8_t * hash, void (* callback)(void * arg), void * callback_arg);
+void btstack_crypto_aes128_cmac_message(btstack_crypto_aes128_cmac_t * request, const uint8_t * key, uint16_t size, const uint8_t * message,  uint8_t * hash, void (* callback)(void * arg), void * callback_arg);
 
 /**
  * Calculate AES128-CMAC with key ZERO and complete message
  * @param request
- * @param len of message
+ * @param size of message
  * @param message
  * @param hash
  * @param callback
  * @param callback_arg
  */
-void btstack_crypto_aes128_cmac_zero(btstack_crypto_aes128_cmac_t * request, uint16_t len, const uint8_t * message,  uint8_t * hash, void (* callback)(void * arg), void * callback_arg);
+void btstack_crypto_aes128_cmac_zero(btstack_crypto_aes128_cmac_t * request, uint16_t size, const uint8_t * message, uint8_t * hash, void (* callback)(void * arg), void * callback_arg);
 
 /**
  * Generate Elliptic Curve Public/Private Key Pair (FIPS P-256)
@@ -281,6 +281,11 @@ void btstack_crypto_ccm_decrypt_block(btstack_crypto_ccm_t * request, uint16_t l
  */
 void btstack_aes128_calc(const uint8_t * key, const uint8_t * plaintext, uint8_t * ciphertext);
 #endif
+
+/**
+ * @brief De-Init BTstack Crypto
+ */
+void btstack_crypto_deinit(void);
 
 // PTS testing only - not possible when using Buetooth Controller for ECC operations
 void btstack_crypto_ecc_p256_set_key(const uint8_t * public_key, const uint8_t * private_key);

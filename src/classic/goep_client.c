@@ -308,7 +308,7 @@ static void goep_client_handle_sdp_query_event(uint8_t packet_type, uint16_t cha
                     if (de_get_element_type(attribute_value) != DE_UINT) break;
                     if (de_get_size_type(attribute_value)    != DE_SIZE_32) break;
                     context->pbap_supported_features  = big_endian_read_32(attribute_value, de_get_header_size(attribute_value));
-                    log_info("pbap_supported_features 0x%x", context->pbap_supported_features);
+                    log_info("pbap_supported_features 0x%x", (unsigned int) context->pbap_supported_features);
                     break;
                 default:
                     break;
@@ -326,7 +326,7 @@ static void goep_client_handle_sdp_query_event(uint8_t packet_type, uint16_t cha
             if ((context->rfcomm_port == 0) && (context->l2cap_psm == 0)){
                 log_info("No GOEP RFCOMM or L2CAP server found");
                 context->state = GOEP_INIT;
-                goep_client_emit_connected_event(goep_client, ERROR_CODE_UNSUPPORTED_FEATURE_OR_PARAMETER_VALUE);
+                goep_client_emit_connected_event(goep_client, SDP_SERVICE_NOT_FOUND);
                 break;
             }
 #ifdef ENABLE_GOEP_L2CAP
@@ -339,6 +339,10 @@ static void goep_client_handle_sdp_query_event(uint8_t packet_type, uint16_t cha
 #endif
             log_info("Remote GOEP RFCOMM Server Channel: %u", context->rfcomm_port);
             rfcomm_create_channel(&goep_client_packet_handler, context->bd_addr, context->rfcomm_port, &context->bearer_cid);
+            break;
+
+        default:
+            break;
     }
 }
 
@@ -374,6 +378,9 @@ void goep_client_init(void){
     goep_client->state = GOEP_INIT;
     goep_client->cid = 1;
     goep_client->obex_connection_id = OBEX_CONNECTION_ID_INVALID;
+}
+
+void goep_client_deinit(void){
 }
 
 uint8_t goep_client_create_connection(btstack_packet_handler_t handler, bd_addr_t addr, uint16_t uuid, uint16_t * out_cid){

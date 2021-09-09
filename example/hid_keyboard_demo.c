@@ -38,13 +38,11 @@
 #define BTSTACK_FILE__ "hid_keyboard_demo.c"
  
 // *****************************************************************************
-/* EXAMPLE_START(hid_keyboard_demo): HID Keyboard (Server) Demo
+/* EXAMPLE_START(hid_keyboard_demo): HID Keyboard Classic
  *
  * @text This HID Device example demonstrates how to implement
  * an HID keyboard. Without a HAVE_BTSTACK_STDIN, a fixed demo text is sent
  * If HAVE_BTSTACK_STDIN is defined, you can type from the terminal
- *
- * @text Status: Basic implementation. HID Request from Host are not answered yet. Works with iOS.
  */
 // *****************************************************************************
 
@@ -186,7 +184,6 @@ static enum {
     APP_CONNECTED
 } app_state = APP_BOOTING;
 
-
 // HID Keyboard lookup
 static int lookup_keycode(uint8_t character, const uint8_t * table, int size, uint8_t * keycode){
     int i;
@@ -257,6 +254,9 @@ static void stdin_process(char character){
             printf("Connecting to %s...\n", bd_addr_to_str(device_addr));
             hid_device_connect(device_addr, &hid_cid);
             break;
+        default:
+            btstack_assert(false);
+            break;
     }
 }
 #else
@@ -309,7 +309,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * pack
     uint8_t status;
     switch (packet_type){
         case HCI_EVENT_PACKET:
-            switch (packet[0]){
+            switch (hci_event_packet_get_type(packet)){
                 case BTSTACK_EVENT_STATE:
                     if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) return;
                     app_state = APP_NOT_CONNECTED;
@@ -325,7 +325,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * pack
                     switch (hci_event_hid_meta_get_subevent_code(packet)){
                         case HID_SUBEVENT_CONNECTION_OPENED:
                             status = hid_subevent_connection_opened_get_status(packet);
-                            if (status) {
+                            if (status != ERROR_CODE_SUCCESS) {
                                 // outgoing connection failed
                                 printf("Connection failed, status 0x%x\n", status);
                                 app_state = APP_NOT_CONNECTED;
@@ -400,8 +400,26 @@ int btstack_main(int argc, const char * argv[]){
     // SDP Server
     sdp_init();
     memset(hid_service_buffer, 0, sizeof(hid_service_buffer));
-    // hid sevice subclass 2540 Keyboard, hid counntry code 33 US, hid virtual cable off, hid reconnect initiate off, hid boot device off 
-    hid_create_sdp_record(hid_service_buffer, 0x10001, 0x2540, 33, 0, 0, hid_boot_device, hid_descriptor_keyboard_boot_mode, sizeof(hid_descriptor_keyboard_boot_mode), hid_device_name);
+
+    uint8_t hid_virtual_cable = 0;
+    uint8_t hid_remote_wake = 1;
+    uint8_t hid_reconnect_initiate = 1;
+    uint8_t hid_normally_connectable = 1;
+
+    hid_sdp_record_t hid_params = {
+        // hid sevice subclass 2540 Keyboard, hid counntry code 33 US
+        0x2540, 33, 
+        hid_virtual_cable, hid_remote_wake, 
+        hid_reconnect_initiate, hid_normally_connectable,
+        hid_boot_device, 
+        0xFFFF, 0xFFFF, 3200,
+        hid_descriptor_keyboard_boot_mode,
+        sizeof(hid_descriptor_keyboard_boot_mode), 
+        hid_device_name
+    };
+    
+    hid_create_sdp_record(hid_service_buffer, 0x10001, &hid_params);
+
     printf("HID service record size: %u\n", de_get_len( hid_service_buffer));
     sdp_register_service(hid_service_buffer);
 

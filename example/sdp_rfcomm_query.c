@@ -38,9 +38,12 @@
 #define BTSTACK_FILE__ "sdp_rfcomm_query.c"
  
 // *****************************************************************************
-//
-// minimal setup for SDP client over USB or UART
-//
+/* EXAMPLE_START(sdp_rfcomm_query): SDP Client - Query RFCOMM SDP record
+ *
+ * @text The example shows how the SDP Client is used to get all RFCOMM service
+ * records from a remote device. It extracts the remote RFCOMM Server Channel, 
+ * which are needed to connect to a remote RFCOMM service.
+ */
 // *****************************************************************************
 
 #include "btstack_config.h"
@@ -60,7 +63,6 @@
 
 static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
-// static bd_addr_t remote = {0x04,0x0C,0xCE,0xE4,0x85,0xD3};
 static bd_addr_t remote = {0x84, 0x38, 0x35, 0x65, 0xD1, 0x15};
 
 static struct {
@@ -71,7 +73,12 @@ static struct {
 static uint8_t  service_index = 0;
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
+static btstack_context_callback_registration_t handle_sdp_client_query_request;
 
+static void handle_start_sdp_client_query(void * context){
+    UNUSED(context);
+    sdp_client_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, remote, BLUETOOTH_ATTRIBUTE_PUBLIC_BROWSE_ROOT);
+}
 
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
     UNUSED(channel);
@@ -84,7 +91,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
         case BTSTACK_EVENT_STATE:
             // BTstack activated, get started 
             if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING){
-                sdp_client_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, remote, BLUETOOTH_ATTRIBUTE_PUBLIC_BROWSE_ROOT);
+                handle_sdp_client_query_request.callback = &handle_start_sdp_client_query;
+                (void) sdp_client_register_query_callback(&handle_sdp_client_query_request);
             }
             break;
         default:
@@ -124,7 +132,7 @@ static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uin
     UNUSED(channel);
     UNUSED(size);
 
-    switch (packet[0]){
+    switch (hci_event_packet_get_type(packet)){
         case SDP_EVENT_QUERY_RFCOMM_SERVICE:
             store_found_service(sdp_event_query_rfcomm_service_get_name(packet), 
                                 sdp_event_query_rfcomm_service_get_rfcomm_channel(packet));
@@ -136,6 +144,8 @@ static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uin
             } 
             printf("SDP query done.\n");
             report_found_services();
+            break;
+        default:
             break;
     }
 }
@@ -157,3 +167,5 @@ int btstack_main(int argc, const char * argv[]){
 
     return 0;
 }
+
+/* EXAMPLE_END */

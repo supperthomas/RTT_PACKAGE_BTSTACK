@@ -38,13 +38,11 @@
 #define BTSTACK_FILE__ "hid_mouse_demo.c"
 
 // *****************************************************************************
-/* EXAMPLE_START(hid_mouse_demo): HID Mouse (Server) Demo
+/* EXAMPLE_START(hid_mouse_demo): HID Mouse Classic
  *
  * @text This HID Device example demonstrates how to implement
  * an HID keyboard. Without a HAVE_BTSTACK_STDIN, a fixed demo text is sent
  * If HAVE_BTSTACK_STDIN is defined, you can type from the terminal
- *
- * @text Status: Basic implementation. HID Request from Host are not answered yet. Works with iOS.
  */
 // *****************************************************************************
 
@@ -232,7 +230,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * pack
     UNUSED(packet_size);
     switch (packet_type){
         case HCI_EVENT_PACKET:
-            switch (packet[0]){
+            switch (hci_event_packet_get_type(packet)){
                 case HCI_EVENT_USER_CONFIRMATION_REQUEST:
                     // ssp: inform about user confirmation request
                     log_info("SSP User Confirmation Request with numeric value '%06"PRIu32"'\n", hci_event_user_confirmation_request_get_numeric_value(packet));
@@ -242,7 +240,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * pack
                 case HCI_EVENT_HID_META:
                     switch (hci_event_hid_meta_get_subevent_code(packet)){
                         case HID_SUBEVENT_CONNECTION_OPENED:
-                            if (hid_subevent_connection_opened_get_status(packet)) return;
+                            if (hid_subevent_connection_opened_get_status(packet) != ERROR_CODE_SUCCESS) return;
                             hid_cid = hid_subevent_connection_opened_get_hid_cid(packet);
 #ifdef HAVE_BTSTACK_STDIN
                             printf("HID Connected, control mouse using 'a','s',''d', 'w' keys for movement and 'l' and 'r' for buttons...\n");
@@ -302,8 +300,26 @@ int btstack_main(int argc, const char * argv[]){
     // SDP Server
     sdp_init();
     memset(hid_service_buffer, 0, sizeof(hid_service_buffer));
-    // hid sevice subclass 2540 Keyboard, hid counntry code 33 US, hid virtual cable off, hid reconnect initiate off, hid boot device off
-    hid_create_sdp_record(hid_service_buffer, 0x10001, 0x2540, 33, 0, 0, hid_boot_device, hid_descriptor_mouse_boot_mode, sizeof(hid_descriptor_mouse_boot_mode), hid_device_name);
+    
+    uint8_t hid_virtual_cable = 0;
+    uint8_t hid_remote_wake = 1;
+    uint8_t hid_reconnect_initiate = 1;
+    uint8_t hid_normally_connectable = 1;
+
+    hid_sdp_record_t hid_params = {
+        // hid sevice subclass 2580 Mouse, hid counntry code 33 US
+        0x2580, 33, 
+        hid_virtual_cable, hid_remote_wake, 
+        hid_reconnect_initiate, hid_normally_connectable,
+        hid_boot_device, 
+        0xFFFF, 0xFFFF, 3200,
+        hid_descriptor_mouse_boot_mode,
+        sizeof(hid_descriptor_mouse_boot_mode), 
+        hid_device_name
+    };
+    
+    hid_create_sdp_record(hid_service_buffer, 0x10001, &hid_params);
+
     printf("SDP service record size: %u\n", de_get_len( hid_service_buffer));
     sdp_register_service(hid_service_buffer);
 

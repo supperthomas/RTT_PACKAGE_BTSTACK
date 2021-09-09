@@ -35,10 +35,9 @@
  *
  */
 
-/*
- *  l2cap_signaling.h
+/**
+ * l2cap_signaling.h
  *
- *  Created by Matthias Ringwald on 7/23/09.
  */
 
 #ifndef L2CAP_SIGNALING_H
@@ -71,6 +70,9 @@ typedef enum {
     LE_CREDIT_BASED_CONNECTION_REQUEST,
     LE_CREDIT_BASED_CONNECTION_RESPONSE,
     LE_FLOW_CONTROL_CREDIT,
+#ifdef UNIT_TEST
+    COMMAND_WITH_INVALID_FORMAT,
+#endif     
     COMMAND_REJECT_LE = 0x1F  // internal to BTstack
 } L2CAP_SIGNALING_COMMANDS;
 

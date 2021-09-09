@@ -35,60 +35,42 @@
  *
  */
 
+/**
+ * @title HID Device
+ *
+ */
+
 #ifndef HID_DEVICE_H
 #define HID_DEVICE_H
 
 #include <stdint.h>
 #include "btstack_defines.h"
 #include "bluetooth.h"
+#include "btstack_hid.h"
 #include "btstack_hid_parser.h"
 
 #if defined __cplusplus
 extern "C" {
 #endif
 
+
 /* API_START */
 
-#define HID_BOOT_MODE_KEYBOARD_ID 1
-#define HID_BOOT_MODE_MOUSE_ID    2
-
-typedef enum {
-    HID_MESSAGE_TYPE_HANDSHAKE = 0,
-    HID_MESSAGE_TYPE_HID_CONTROL,
-    HID_MESSAGE_TYPE_RESERVED_2,
-    HID_MESSAGE_TYPE_RESERVED_3,
-    HID_MESSAGE_TYPE_GET_REPORT,
-    HID_MESSAGE_TYPE_SET_REPORT,
-    HID_MESSAGE_TYPE_GET_PROTOCOL,
-    HID_MESSAGE_TYPE_SET_PROTOCOL,
-    HID_MESSAGE_TYPE_GET_IDLE_DEPRECATED,
-    HID_MESSAGE_TYPE_SET_IDLE_DEPRECATED,
-    HID_MESSAGE_TYPE_DATA,
-    HID_MESSAGE_TYPE_DATC_DEPRECATED
-} hid_message_type_t;
-
-typedef enum {
-    HID_HANDSHAKE_PARAM_TYPE_SUCCESSFUL = 0x00,        // This code is used to acknowledge requests. A device that has correctly received SET_REPORT, SET_IDLE or SET_PROTOCOL payload transmits an acknowledgment to the host.
-    HID_HANDSHAKE_PARAM_TYPE_NOT_READY,                // This code indicates that a device is too busy to accept data. The Bluetooth HID Host should retransmit the data the next time it communicates with the device.
-    HID_HANDSHAKE_PARAM_TYPE_ERR_INVALID_REPORT_ID,    // Invalid report ID transmitted.
-    HID_HANDSHAKE_PARAM_TYPE_ERR_UNSUPPORTED_REQUEST,  // The device does not support the request. This result code shall be used if the HIDP message type is unsupported.
-    HID_HANDSHAKE_PARAM_TYPE_ERR_INVALID_PARAMETER,    // A parameter value is out of range or inappropriate for the request.
-    HID_HANDSHAKE_PARAM_TYPE_ERR_UNKNOWN = 0x0E        // Device could not identify the error condition. 0xF = ERR_FATAL. Restart is essential to resume functionality.
-} hid_handshake_param_type_t;
-
-typedef enum {
-    HID_CONTROL_PARAM_NOP_DEPRECATED = 0,              // Deprecated: No Operation.
-    HID_CONTROL_PARAM_HARD_RESET_DEPRECATED,           // Deprecated: Device performs Power On System Test (POST) then initializes all internal variables and initiates normal operations.
-    HID_CONTROL_PARAM_SOFT_RESET_DEPRECATED,           // Deprecated: Device initializes all internal variables and initiates normal operations.
-    HID_CONTROL_PARAM_SUSPEND = 0x03,                  // Go to reduced power mode.
-    HID_CONTROL_PARAM_EXIT_SUSPEND,                    // Exit reduced power mode.
-    HID_CONTROL_PARAM_VIRTUAL_CABLE_UNPLUG
-} hid_control_param_t;
-
-typedef enum {
-    HID_PROTOCOL_MODE_BOOT = 0,
-    HID_PROTOCOL_MODE_REPORT
-} hid_protocol_mode_t;
+typedef struct {
+    uint16_t        hid_device_subclass;
+    uint8_t         hid_country_code;
+    uint8_t         hid_virtual_cable;
+    uint8_t         hid_remote_wake;
+    uint8_t         hid_reconnect_initiate;
+    bool            hid_normally_connectable;
+    bool            hid_boot_device;
+    uint16_t        hid_ssr_host_max_latency; 
+    uint16_t        hid_ssr_host_min_timeout;
+    uint16_t        hid_supervision_timeout;
+    const uint8_t * hid_descriptor;
+    uint16_t        hid_descriptor_size;
+    const char *    device_name;
+} hid_sdp_record_t;
 
 /**
  * @brief Create HID Device SDP service record. 
@@ -96,27 +78,9 @@ typedef enum {
  * @param have_remote_audio_control 
  * @param service
  * @param service_record_handle
- * @param hid_device_subclass
- * @param hid_country_code
- * @param hid_virtual_cable
- * @param hid_reconnect_initiate
- * @param hid_boot_device
- * @param hid_descriptor
- * @param hid_descriptor_size size of hid_descriptor
- * @param device_name
+ * @param params
  */
-void hid_create_sdp_record(
-    uint8_t *       service, 
-    uint32_t        service_record_handle,
-    uint16_t        hid_device_subclass,
-    uint8_t         hid_country_code,
-    uint8_t         hid_virtual_cable,
-    uint8_t         hid_reconnect_initiate,
-    uint8_t         hid_boot_device,
-    const uint8_t * hid_descriptor,
-    uint16_t 		hid_descriptor_size,
-    const char *    device_name);
-
+void hid_create_sdp_record(uint8_t * service, uint32_t service_record_handle, const hid_sdp_record_t * params);
 
 /**
  * @brief Set up HID Device 
@@ -124,7 +88,7 @@ void hid_create_sdp_record(
  * @param hid_descriptor_len
  * @param hid_descriptor
  */
-void hid_device_init(uint8_t boot_protocol_mode_supported, uint16_t hid_descriptor_len, const uint8_t * hid_descriptor);
+void hid_device_init(bool boot_protocol_mode_supported, uint16_t hid_descriptor_len, const uint8_t * hid_descriptor);
 
 /**
  * @brief Register callback for the HID Device client. 
@@ -172,13 +136,13 @@ void hid_device_disconnect(uint16_t hid_cid);
 void hid_device_request_can_send_now_event(uint16_t hid_cid);
 
 /**
- * @brief Send HID messageon interrupt channel
+ * @brief Send HID message on interrupt channel
  * @param hid_cid
  */
 void hid_device_send_interrupt_message(uint16_t hid_cid, const uint8_t * message, uint16_t message_len);
 
 /**
- * @brief Send HID messageon control channel
+ * @brief Send HID message on control channel
  * @param hid_cid
  */
 void hid_device_send_control_message(uint16_t hid_cid, const uint8_t * message, uint16_t message_len);
@@ -188,6 +152,11 @@ void hid_device_send_control_message(uint16_t hid_cid, const uint8_t * message, 
  * @param hid_cid
  */
 int hid_device_in_boot_protocol_mode(uint16_t hid_cid);
+
+/**
+ * @brief De-Init HID Device
+ */
+void hid_device_deinit(void);
 
 /* API_END */
 

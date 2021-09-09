@@ -156,7 +156,7 @@ static void le_device_db_tlv_scan(void){
         entry_map[i] = 1;
         num_valid_entries++;
     }
-    log_info("num valid le device entries %u", num_valid_entries);
+    log_info("num valid le device entries %u", (unsigned int) num_valid_entries);
 }
 
 void le_device_db_init(void){
@@ -180,6 +180,9 @@ int le_device_db_max_count(void){
 }
 
 void le_device_db_remove(int index){
+    btstack_assert(index >= 0);
+    btstack_assert(index < le_device_db_max_count());
+    
     // check if entry exists
     if (entry_map[index] == 0u) return; 
 
@@ -196,7 +199,7 @@ void le_device_db_remove(int index){
 int le_device_db_add(int addr_type, bd_addr_t addr, sm_key_t irk){
 
     uint32_t highest_seq_nr = 0;
-    uint32_t lowest_seq_nr  = 0xFFFFFFFF;
+    uint32_t lowest_seq_nr  = 0xFFFFFFFFU;
     int index_for_lowest_seq_nr = -1;
     int index_for_addr  = -1;
     int index_for_empty = -1;
@@ -239,7 +242,7 @@ int le_device_db_add(int addr_type, bd_addr_t addr, sm_key_t irk){
         return -1;
     }
 
-    log_info("new entry for index %u", index_to_use);
+    log_info("new entry for index %u", (unsigned int) index_to_use);
 
     // store entry at index
 	le_device_db_entry_t entry;
@@ -288,9 +291,9 @@ void le_device_db_info(int index, int * addr_type, bd_addr_t addr, sm_key_t irk)
     }
 
     // setup return values
-    if (addr_type) *addr_type = entry.addr_type;
-    if (addr) (void)memcpy(addr, entry.addr, 6);
-    if (irk) (void)memcpy(irk, entry.irk, 16);
+    if (addr_type != NULL) *addr_type = entry.addr_type;
+    if (addr != NULL) (void)memcpy(addr, entry.addr, 6);
+    if (irk != NULL) (void)memcpy(irk, entry.irk, 16);
 }
 
 void le_device_db_encryption_set(int index, uint16_t ediv, uint8_t rand[8], sm_key_t ltk, int key_size, int authenticated, int authorized, int secure_connection){
@@ -304,8 +307,8 @@ void le_device_db_encryption_set(int index, uint16_t ediv, uint8_t rand[8], sm_k
     log_info("LE Device DB set encryption for %u, ediv x%04x, key size %u, authenticated %u, authorized %u, secure connection %u",
         index, ediv, key_size, authenticated, authorized, secure_connection);
     entry.ediv = ediv;
-    if (rand) (void)memcpy(entry.rand, rand, 8);
-    if (ltk) (void)memcpy(entry.ltk, ltk, 16);
+    if (rand != 0) (void)memcpy(entry.rand, rand, 8);
+    if (ltk != 0) (void)memcpy(entry.ltk, ltk, 16);
     entry.key_size = key_size;
     entry.authenticated = authenticated;
     entry.authorized = authorized;
@@ -328,13 +331,13 @@ void le_device_db_encryption_get(int index, uint16_t * ediv, uint8_t rand[8], sm
 	// update user fields
     log_info("LE Device DB encryption for %u, ediv x%04x, keysize %u, authenticated %u, authorized %u, secure connection %u",
         index, entry.ediv, entry.key_size, entry.authenticated, entry.authorized, entry.secure_connection);
-    if (ediv) *ediv = entry.ediv;
-    if (rand) (void)memcpy(rand, entry.rand, 8);
-    if (ltk)  (void)memcpy(ltk, entry.ltk, 16);    
-    if (key_size) *key_size = entry.key_size;
-    if (authenticated) *authenticated = entry.authenticated;
-    if (authorized) *authorized = entry.authorized;
-    if (secure_connection) *secure_connection = entry.secure_connection;
+    if (ediv != NULL) *ediv = entry.ediv;
+    if (rand != NULL) (void)memcpy(rand, entry.rand, 8);
+    if (ltk != NULL)  (void)memcpy(ltk, entry.ltk, 16);
+    if (key_size != NULL) *key_size = entry.key_size;
+    if (authenticated != NULL) *authenticated = entry.authenticated;
+    if (authorized != NULL) *authorized = entry.authorized;
+    if (secure_connection != NULL) *secure_connection = entry.secure_connection;
 }
 
 #ifdef ENABLE_LE_SIGNED_WRITE
@@ -457,7 +460,7 @@ void le_device_db_dump(void){
 		// fetch entry
 		le_device_db_entry_t entry;
 		le_device_db_tlv_fetch(i, &entry);
-        log_info("%u: %u %s", i, entry.addr_type, bd_addr_to_str(entry.addr));
+        log_info("%u: %u %s", (unsigned int) i, entry.addr_type, bd_addr_to_str(entry.addr));
         log_info_key("irk", entry.irk);
 #ifdef ENABLE_LE_SIGNED_WRITE
         log_info_key("local csrk", entry.local_csrk);

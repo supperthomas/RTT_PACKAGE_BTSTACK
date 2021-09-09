@@ -82,7 +82,7 @@ void avdtp_sink_register_header_compression_category(uint8_t seid, uint8_t back_
     avdtp_register_header_compression_category(stream_endpoint, back_ch, media, recovery);
 }
 
-void avdtp_sink_register_media_codec_category(uint8_t seid, avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, uint8_t * media_codec_info, uint16_t media_codec_info_len){
+void avdtp_sink_register_media_codec_category(uint8_t seid, avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, const uint8_t *media_codec_info, uint16_t media_codec_info_len){
     avdtp_stream_endpoint_t * stream_endpoint = avdtp_get_stream_endpoint_for_seid(seid);
     avdtp_register_media_codec_category(stream_endpoint, media_type, media_codec_type, media_codec_info, media_codec_info_len);
 }
@@ -103,8 +103,16 @@ void avdtp_sink_init(void) {
     avdtp_init();
 }
 
+void avdtp_sink_deinit(void){
+    avdtp_deinit();
+}
+
 avdtp_stream_endpoint_t * avdtp_sink_create_stream_endpoint(avdtp_sep_type_t sep_type, avdtp_media_type_t media_type){
     return avdtp_create_stream_endpoint(sep_type, media_type);
+}
+
+void avdtp_sink_finalize_stream_endpoint(avdtp_stream_endpoint_t * stream_endpoint){
+    avdtp_finalize_stream_endpoint(stream_endpoint);
 }
 
 void avdtp_sink_register_media_handler(void (*callback)(uint8_t local_seid, uint8_t *packet, uint16_t size)){
@@ -176,7 +184,7 @@ uint8_t avdtp_sink_delay_report(uint16_t avdtp_cid, uint8_t local_seid, uint16_t
         return ERROR_CODE_COMMAND_DISALLOWED;
     }
 
-    avdtp_stream_endpoint_t * stream_endpoint = avdtp_get_stream_endpoint_with_seid(local_seid);
+    avdtp_stream_endpoint_t * stream_endpoint = avdtp_get_stream_endpoint_for_seid(local_seid);
     if (!stream_endpoint) {
         log_error("delay_report: no stream_endpoint with seid %d found", local_seid);
         return ERROR_CODE_UNKNOWN_CONNECTION_IDENTIFIER;
@@ -192,7 +200,7 @@ uint8_t avdtp_sink_delay_report(uint16_t avdtp_cid, uint8_t local_seid, uint16_t
     connection->delay_ms = delay_100us;
     connection->initiator_local_seid = local_seid;
     connection->initiator_remote_seid = stream_endpoint->remote_sep.seid;
-    avdtp_request_can_send_now_initiator(connection, connection->l2cap_signaling_cid);
+	avdtp_request_can_send_now_initiator(connection);
     return ERROR_CODE_SUCCESS;
 }
 

@@ -42,9 +42,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "btstack.h"
 #include "btstack_memory.h"
+#include "btstack_event.h"
 
+#include "mesh/provisioning_device.h"
 #include "mesh/mesh_crypto.h"
 #ifdef ENABLE_MESH_ADV_BEARER
 #include "mesh/pb_adv.h"
@@ -139,6 +140,7 @@ typedef enum {
     DEVICE_SEND_INPUT_COMPLETE,
     DEVICE_W4_PUB_KEY,
     DEVICE_SEND_PUB_KEY,
+    DEVICE_PUB_KEY_SENT,
     DEVICE_W4_CONFIRM,
     DEVICE_SEND_CONFIRM,
     DEVICE_W4_RANDOM,
@@ -405,6 +407,7 @@ static void provisioning_run(void){
             provisioning_send_input_complete();
             break;
         case DEVICE_SEND_PUB_KEY:
+            device_state = DEVICE_PUB_KEY_SENT;
             prov_waiting_for_outgoing_complete = 1;
             provisioning_send_public_key();
             provisioning_public_key_exchange_complete();
@@ -491,6 +494,9 @@ static void provisioning_handle_start(uint8_t * packet, uint16_t size){
                 ok = 0;
                 break;
             }
+            break;
+        default:
+            // TODO check
             break;
     }
     if (!ok){
@@ -756,8 +762,10 @@ static void provisioning_handle_pdu(uint8_t packet_type, uint16_t channel, uint8
 
     switch (packet_type){
         case HCI_EVENT_PACKET:
-            if (packet[0] != HCI_EVENT_MESH_META)  break;
-            switch (packet[2]){
+        
+            if (hci_event_packet_get_type(packet) != HCI_EVENT_MESH_META)  break;
+
+            switch (hci_event_mesh_meta_get_subevent_code(packet)){
                 case MESH_SUBEVENT_PB_TRANSPORT_LINK_OPEN:
                     pb_transport_cid = mesh_subevent_pb_transport_link_open_get_pb_transport_cid(packet);
                     pb_type = mesh_subevent_pb_transport_link_open_get_pb_type(packet);
@@ -768,6 +776,7 @@ static void provisioning_handle_pdu(uint8_t packet_type, uint16_t channel, uint8
                     printf("Outgoing packet acked\n");
                     prov_waiting_for_outgoing_complete = 0;
                     if (device_state == DEVICE_W4_DONE){
+                        pb_close_link(1, 0);
                         provisioning_done();
                     }
                     break;                    
@@ -775,6 +784,8 @@ static void provisioning_handle_pdu(uint8_t packet_type, uint16_t channel, uint8
                     printf("Link close, reset state\n");
                     pb_transport_cid = MESH_PB_TRANSPORT_INVALID_CID;
                     provisioning_done();
+                    break;
+                default:
                     break;
             }
             break;
@@ -843,7 +854,7 @@ void provisioning_device_init(void){
 #ifdef ENABLE_MESH_ADV_BEARER
     // setup PB ADV
     pb_adv_init();
-    pb_adv_register_packet_handler(&provisioning_handle_pdu);
+    pb_adv_register_device_packet_handler(&provisioning_handle_pdu);
 #endif
 #ifdef ENABLE_MESH_GATT_BEARER
     // setup PB GATT

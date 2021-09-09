@@ -35,12 +35,11 @@
  *
  */
 
-/*
- * avdtp_source.h
- * 
- * Audio/Video Distribution Transport Protocol Source
+/**
+ * @title AVDTP Source
  *
- * AVDTP Source is a device that streames media data.
+ * Audio/Video Distribution Transport Protocol (AVDTP) Source is a device that streames media data.
+ *
  */
 
 #ifndef AVDTP_SOURCE_H
@@ -107,7 +106,7 @@ void avdtp_source_register_header_compression_category(uint8_t seid, uint8_t bac
  * @param media_codec_info
  * @param media_codec_info_len
  */
-void avdtp_source_register_media_codec_category(uint8_t seid, avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, uint8_t * media_codec_info, uint16_t media_codec_info_len);
+void avdtp_source_register_media_codec_category(uint8_t seid, avdtp_media_type_t media_type, avdtp_media_codec_type_t media_codec_type, const uint8_t *media_codec_info, uint16_t media_codec_info_len);
 
 /**
  * @brief Register multiplexing category with local stream endpoint identified by seid
@@ -232,7 +231,35 @@ uint8_t avdtp_source_suspend(uint16_t avdtp_cid, uint8_t local_seid);
 avdtp_stream_endpoint_t * avdtp_source_create_stream_endpoint(avdtp_sep_type_t sep_type, avdtp_media_type_t media_type);
 
 /**
- * @brief Send media payload.
+ *  @brief Unregister stream endpoint and free it's memory
+ *  @param stream_endpoint created by avdtp_sink_create_stream_endpoint
+ */
+void avdtp_source_finalize_stream_endpoint(avdtp_stream_endpoint_t * stream_endpoint);
+
+/**
+ * @brief Send media packet
+ * @param avdtp_cid         AVDTP channel identifyer.
+ * @param local_seid        ID of a local stream endpoint.
+ * @param packet
+ * @param size
+ * @return status
+ */
+uint8_t avdtp_source_stream_send_media_packet(uint16_t avdtp_cid, uint8_t local_seid, const uint8_t * packet, uint16_t size);
+
+/**
+ * @brief Send media payload including RTP header
+ * @param avdtp_cid         AVDTP channel identifyer.
+ * @param local_seid        ID of a local stream endpoint.
+ * @param marker
+ * @param payload
+ * @param size
+ * @return status
+ */
+uint8_t avdtp_source_stream_send_media_payload_rtp(uint16_t avdtp_cid, uint8_t local_seid, uint8_t marker, uint8_t * payload, uint16_t size);
+
+/**
+ * @brief Send media payload including RTP header and the SBC media header
+ * @deprecated Please use avdtp_source_stream_send_media_payload_rtp
  * @param avdtp_cid         AVDTP channel identifyer.
  * @param local_seid        ID of a local stream endpoint.
  * @param storage
@@ -242,6 +269,8 @@ avdtp_stream_endpoint_t * avdtp_source_create_stream_endpoint(avdtp_sep_type_t s
  * @return max_media_payload_size_without_media_header
  */
 int avdtp_source_stream_send_media_payload(uint16_t avdtp_cid, uint8_t local_seid, uint8_t * storage, int num_bytes_to_copy, uint8_t num_frames, uint8_t marker);
+
+
 
 /**
  * @brief Request to send a media packet. Packet can be then sent on reception of AVDTP_SUBEVENT_STREAMING_CAN_SEND_MEDIA_PACKET_NOW event.
@@ -256,6 +285,11 @@ void avdtp_source_stream_endpoint_request_can_send_now(uint16_t avddp_cid, uint8
  * @param local_seid        ID of a local stream endpoint.
  */
 int avdtp_max_media_payload_size(uint16_t avdtp_cid, uint8_t local_seid);
+
+/**
+ * @brief De-Init AVDTP Source.
+ */
+void avdtp_source_deinit(void);
 
 /* API_END */
 

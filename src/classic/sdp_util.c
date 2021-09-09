@@ -43,15 +43,19 @@
 
 #include "bluetooth.h"
 #include "btstack_config.h"
+#include "btstack_debug.h"
 #include "btstack_util.h"
 #include "classic/core.h"
 #include "classic/sdp_util.h"
  
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>   // PRIx32
+
+#ifdef ENABLE_SDP_DES_DUMP
+#include <stdio.h>
+#endif
 
 #ifdef ENABLE_SDP_DES_DUMP
 // workaround for missing PRIx32 on mspgcc (16-bit MCU)
@@ -200,7 +204,7 @@ void de_store_descriptor_with_len(uint8_t * header, de_type_t type, de_size_t si
 /* starts a new sequence in empty buffer - first call */
 void de_create_sequence(uint8_t *header){
     de_store_descriptor_with_len( header, DE_DES, DE_SIZE_VAR_16, 0); // DES, 2 Byte Length
-};
+}
 
 /* starts a sub-sequence, @returns handle for sub-sequence */
 uint8_t * de_push_sequence(uint8_t *header){
@@ -254,8 +258,10 @@ void de_add_data( uint8_t *seq, de_type_t type, uint16_t size, uint8_t *data){
         de_store_descriptor_with_len(seq+3+data_size, type, DE_SIZE_VAR_8, size); 
         data_size += 2;
     }
-    (void)memcpy(seq + 3 + data_size, data, size);
-    data_size += size;
+    if (size > 0){
+		(void)memcpy(seq + 3 + data_size, data, size);
+		data_size += size;
+    }
     big_endian_store_16(seq, 1, data_size);
 }
 
@@ -274,7 +280,6 @@ bool des_iterator_init(des_iterator_t * it, uint8_t * element){
     it->element = element;
     it->pos = de_get_header_size(element);
     it->length = de_get_len(element);
-    // printf("des_iterator_init current pos %d, total len %d\n", it->pos, it->length);
     return true;
 }
 
@@ -299,7 +304,6 @@ uint8_t * des_iterator_get_element(des_iterator_t * it){
 
 void des_iterator_next(des_iterator_t * it){
     int element_len = de_get_len(&it->element[it->pos]);
-    // printf("des_iterator_next element size %d, current pos %d, total len %d\n", element_len, it->pos, it->length);
     it->pos += element_len;
 }
 
@@ -715,6 +719,8 @@ void de_dump_data_element(const uint8_t * record){
     de_type_t type = de_get_element_type(record);
     de_size_t size = de_get_size_type(record);
     de_traversal_dump_data((uint8_t *) record, type, size, (void*) &indent);
+#else
+UNUSED(record);
 #endif
 }
 

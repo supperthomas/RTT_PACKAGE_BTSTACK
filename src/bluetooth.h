@@ -75,6 +75,14 @@ typedef uint8_t bd_addr_t[BD_ADDR_LEN];
     BD_ADDR_TYPE_UNKNOWN   = 0xfe,  // also used as 'invalid'
 } bd_addr_type_t;
 
+/**
+ * Link types for BR/EDR Connections
+ */
+typedef enum {
+    HCI_LINK_TYPE_SCO  = 0,
+    HCI_LINK_TYPE_ACL  = 1,
+    HCI_LINK_TYPE_ESCO = 2,
+} hci_link_type_t;
 
 
 /**
@@ -88,6 +96,7 @@ typedef uint8_t link_key_t[LINK_KEY_LEN];
  * @brief link key type
  */
 typedef enum {
+  INVALID_LINK_KEY = 0xffff,
   COMBINATION_KEY = 0,  // standard pairing
   LOCAL_UNIT_KEY,     // ?
   REMOTE_UNIT_KEY,    // ?
@@ -113,6 +122,36 @@ typedef enum {
   INQUIRY_MODE_RSSI_AND_EIR,
 } inquiry_mode_t;
 
+/**
+ * @brief Page Scan Types
+ */
+typedef enum {
+    PAGE_SCAN_MODE_STANDARD = 0,
+    PAGE_SCAN_MODE_INTERLACED,
+} page_scan_type_t;
+
+/**
+ * @brief Inquiry Scan Types
+ */
+typedef enum {
+    INQUIRY_SCAN_MODE_STANDARD = 0,
+    INQUIRY_SCAN_MODE_INTERLACED,
+} inquiry_scan_type_t;
+
+/**
+ * Link Supervision Timeout Default, 0x7d00 * 0.625ms = 20s
+ */
+#define HCI_LINK_SUPERVISION_TIMEOUT_DEFAULT 0x7D00
+
+/**
+ * Service Type used for QoS Setup and Flow Specification
+ */
+typedef enum {
+    HCI_SERVICE_TYPE_NO_TRAFFIC = 0,
+    HCI_SERVICE_TYPE_BEST_EFFORT,
+    HCI_SERVICE_TYPE_GUARANTEED,
+    HCI_SERVICE_TYPE_INVALID,
+} hci_service_type_t;
 
 /**
  * HCI Transport 
@@ -238,6 +277,8 @@ typedef enum {
 #define RFCOMM_AGGREGATE_FLOW_OFF                          0x73
 #define RFCOMM_DATA_LEN_EXCEEDS_MTU                        0x74
 
+#define HFP_REMOTE_REJECTS_AUDIO_CONNECTION                0x7F
+
 #define SDP_HANDLE_ALREADY_REGISTERED                      0x80
 #define SDP_QUERY_INCOMPLETE                               0x81
 #define SDP_SERVICE_NOT_FOUND                              0x82
@@ -320,6 +361,14 @@ typedef enum {
 #define HCI_ACL_3DH5_SIZE         1021
        
 #define LE_ADVERTISING_DATA_SIZE    31
+
+// SCO Packet Types
+#define SCO_PACKET_TYPES_NONE  0x0000
+#define SCO_PACKET_TYPES_HV1   0x0001
+#define SCO_PACKET_TYPES_HV3   0x0004
+#define SCO_PACKET_TYPES_EV3   0x0008
+#define SCO_PACKET_TYPES_2EV3  0x0040
+#define SCO_PACKET_TYPES_ALL   0x03FF
 
 // Link Policy Settings
 #define LM_LINK_POLICY_DISABLE_ALL_LM_MODES  0
@@ -570,7 +619,7 @@ typedef enum {
 #define ATT_ERROR_UNSUPPORTED_GROUP_TYPE           0x10
 #define ATT_ERROR_INSUFFICIENT_RESOURCES           0x11
 
-// MARK: ATT Error Codes used internally by BTstack
+// MARK: ATT Error Codes defined by BTstack
 #define ATT_ERROR_HCI_DISCONNECT_RECEIVED          0x1f
 #define ATT_ERROR_BONDING_INFORMATION_MISSING      0x70
 #define ATT_ERROR_DATA_MISMATCH                    0x7e
@@ -692,6 +741,7 @@ typedef enum {
 #define SM_AUTHREQ_MITM_PROTECTION   0x04
 #define SM_AUTHREQ_SECURE_CONNECTION 0x08
 #define SM_AUTHREQ_KEYPRESS          0x10
+#define SM_AUTHREQ_CT2               0x20
 
 // Key distribution flags used by spec
 #define SM_KEYDIST_ENC_KEY  0x01

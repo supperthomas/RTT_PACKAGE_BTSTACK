@@ -37,12 +37,10 @@
 
 #define BTSTACK_FILE__ "le_data_channel_client.c"
 
-/*
- * le_data_channel_client.c
- */
-
 // *****************************************************************************
-/* EXAMPLE_START(le_data_channel_client): Connects to 'LE Data Channel' and streams data 
+/* EXAMPLE_START(le_data_channel_client): LE Data Channel Client - Send Data over L2CAP
+ *
+ * @text Connects to 'LE Data Channel' and streams data 
  * via LE Data Channel == LE Connection-Oriented Channel == LE Credit-based Connection
  */
 // *****************************************************************************
@@ -78,6 +76,7 @@ static bd_addr_type_t le_data_channel_addr_type;
 
 static hci_con_handle_t connection_handle;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
+static btstack_packet_callback_registration_t sm_event_callback_registration;
 
 static uint8_t data_channel_buffer[TEST_PACKET_SIZE];
 
@@ -141,15 +140,12 @@ static int advertisement_report_contains_name(const char * name, uint8_t * adver
         uint8_t data_type    = ad_iterator_get_data_type(&context);
         uint8_t data_size    = ad_iterator_get_data_len(&context);
         const uint8_t * data = ad_iterator_get_data(&context);
-        int i;
         switch (data_type){
             case BLUETOOTH_DATA_TYPE_SHORTENED_LOCAL_NAME:
             case BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME:
-                // compare common prefix
-                for (i=0; i<data_size && i<name_len;i++){
-                    if (data[i] != name[i]) break;
-                }
-                // prefix match
+                // compare prefix
+                if (data_size < name_len) break;
+                if (memcmp(data, name, name_len) == 0) return 1;
                 return 1;
             default:
                 break;
@@ -210,6 +206,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
     uint16_t cid;
     uint16_t conn_interval;
     hci_con_handle_t handle;
+    uint8_t status;
 
     switch (packet_type) {
         case HCI_EVENT_PACKET:
@@ -266,7 +263,8 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                     psm = l2cap_event_le_channel_opened_get_psm(packet); 
                     cid = l2cap_event_le_channel_opened_get_local_cid(packet); 
                     handle = l2cap_event_le_channel_opened_get_handle(packet);
-                    if (packet[2] == 0) {
+                    status = l2cap_event_le_channel_opened_get_status(packet);
+                    if (status == ERROR_CODE_SUCCESS) {
                         printf("L2CAP: LE Data Channel successfully opened: %s, handle 0x%02x, psm 0x%02x, local cid 0x%02x, remote cid 0x%02x\n",
                                bd_addr_to_str(event_address), handle, psm, cid,  little_endian_read_16(packet, 15));
                         le_data_channel_connection.cid = cid;
@@ -279,7 +277,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
                         l2cap_le_request_can_send_now_event(le_data_channel_connection.cid);
 #endif
                     } else {
-                        printf("L2CAP: LE Data Channel connection to device %s failed. status code %u\n", bd_addr_to_str(event_address), packet[2]);
+                        printf("L2CAP: LE Data Channel connection to device %s failed. status code 0x%02x\n", bd_addr_to_str(event_address), status);
                     }
                     break;
 
@@ -303,6 +301,34 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packe
             test_track_data(&le_data_channel_connection, size);
             break;
 
+        default:
+            break;
+    }
+}
+
+/*
+ * @section SM Packet Handler
+ *
+ * @text The packet handler is used to handle pairing requests
+ */
+static void sm_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+    UNUSED(channel);
+    UNUSED(size);
+
+    if (packet_type != HCI_EVENT_PACKET) return;
+
+    switch (hci_event_packet_get_type(packet)) {
+        case SM_EVENT_JUST_WORKS_REQUEST:
+            printf("Just Works requested\n");
+            sm_just_works_confirm(sm_event_just_works_request_get_handle(packet));
+            break;
+        case SM_EVENT_NUMERIC_COMPARISON_REQUEST:
+            printf("Confirming numeric comparison: %"PRIu32"\n", sm_event_numeric_comparison_request_get_passkey(packet));
+            sm_numeric_comparison_confirm(sm_event_passkey_display_number_get_handle(packet));
+            break;
+        case SM_EVENT_PASSKEY_DISPLAY_NUMBER:
+            printf("Display Passkey: %"PRIu32"\n", sm_event_passkey_display_number_get_passkey(packet));
+            break;
         default:
             break;
     }
@@ -346,6 +372,9 @@ int btstack_main(int argc, const char * argv[]){
 
     hci_event_callback_registration.callback = &packet_handler;
     hci_add_event_handler(&hci_event_callback_registration);
+
+    sm_event_callback_registration.callback = &sm_packet_handler;
+    sm_add_event_handler(&sm_event_callback_registration);
 
     // turn on!
     hci_power_control(HCI_POWER_ON);

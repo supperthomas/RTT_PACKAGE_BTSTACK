@@ -38,9 +38,9 @@
 
 
 /*
- *  btstack_memory.h
+ * btstack_memory.h
  *
- *  @brief BTstack memory management via configurable memory pools
+ * @brief BTstack memory management using configurable memory pools
  *
  */
 
@@ -58,18 +58,24 @@ extern "C" {
 #include "l2cap.h"
 
 // Classic
-#include "classic/bnep.h"
-#include "classic/hfp.h"
-#include "classic/btstack_link_key_db.h"
-#include "classic/btstack_link_key_db_memory.h"
-#include "classic/rfcomm.h"
-#include "classic/sdp_server.h"
+#ifdef ENABLE_CLASSIC
 #include "classic/avdtp_sink.h"
 #include "classic/avdtp_source.h"
 #include "classic/avrcp.h"
+#include "classic/bnep.h"
+#include "classic/btstack_link_key_db.h"
+#include "classic/btstack_link_key_db_memory.h"
+#include "classic/hfp.h"
+#include "classic/hid_host.h"
+#include "classic/rfcomm.h"
+#include "classic/sdp_server.h"
+#endif
 
 // BLE
 #ifdef ENABLE_BLE
+#include "ble/gatt-service/battery_service_client.h"
+#include "ble/gatt-service/hids_client.h"
+#include "ble/gatt-service/scan_parameters_service_client.h"
 #include "ble/gatt_client.h"
 #include "ble/sm.h"
 #endif
@@ -86,6 +92,12 @@ extern "C" {
  * @brief Initializes BTstack memory pools.
  */
 void btstack_memory_init(void);
+
+/**
+ * @brief Deinitialize BTstack memory pools
+ * @note if HAVE_MALLOC is defined, all previously allocated buffers are free'd
+ */
+void btstack_memory_deinit(void);
 
 /* API_END */
 
@@ -122,6 +134,10 @@ void   btstack_memory_bnep_channel_free(bnep_channel_t *bnep_channel);
 hfp_connection_t * btstack_memory_hfp_connection_get(void);
 void   btstack_memory_hfp_connection_free(hfp_connection_t *hfp_connection);
 
+// hid_host_connection
+hid_host_connection_t * btstack_memory_hid_host_connection_get(void);
+void   btstack_memory_hid_host_connection_free(hid_host_connection_t *hid_host_connection);
+
 // service_record_item
 service_record_item_t * btstack_memory_service_record_item_get(void);
 void   btstack_memory_service_record_item_free(service_record_item_t *service_record_item);
@@ -144,20 +160,28 @@ void   btstack_memory_avrcp_browsing_connection_free(avrcp_browsing_connection_t
 
 #endif
 #ifdef ENABLE_BLE
-// gatt_client, whitelist_entry, sm_lookup_entry
+// battery_service_client, gatt_client, hids_client, scan_parameters_service_client, sm_lookup_entry, whitelist_entry
+battery_service_client_t * btstack_memory_battery_service_client_get(void);
+void   btstack_memory_battery_service_client_free(battery_service_client_t *battery_service_client);
 gatt_client_t * btstack_memory_gatt_client_get(void);
 void   btstack_memory_gatt_client_free(gatt_client_t *gatt_client);
-whitelist_entry_t * btstack_memory_whitelist_entry_get(void);
-void   btstack_memory_whitelist_entry_free(whitelist_entry_t *whitelist_entry);
+hids_client_t * btstack_memory_hids_client_get(void);
+void   btstack_memory_hids_client_free(hids_client_t *hids_client);
+scan_parameters_service_client_t * btstack_memory_scan_parameters_service_client_get(void);
+void   btstack_memory_scan_parameters_service_client_free(scan_parameters_service_client_t *scan_parameters_service_client);
 sm_lookup_entry_t * btstack_memory_sm_lookup_entry_get(void);
 void   btstack_memory_sm_lookup_entry_free(sm_lookup_entry_t *sm_lookup_entry);
+whitelist_entry_t * btstack_memory_whitelist_entry_get(void);
+void   btstack_memory_whitelist_entry_free(whitelist_entry_t *whitelist_entry);
 #endif
 #ifdef ENABLE_MESH
-// mesh_network_pdu, mesh_transport_pdu, mesh_network_key, mesh_transport_key, mesh_virtual_address, mesh_subnet
+// mesh_network_pdu, mesh_segmented_pdu, mesh_upper_transport_pdu, mesh_network_key, mesh_transport_key, mesh_virtual_address, mesh_subnet
 mesh_network_pdu_t * btstack_memory_mesh_network_pdu_get(void);
 void   btstack_memory_mesh_network_pdu_free(mesh_network_pdu_t *mesh_network_pdu);
-mesh_transport_pdu_t * btstack_memory_mesh_transport_pdu_get(void);
-void   btstack_memory_mesh_transport_pdu_free(mesh_transport_pdu_t *mesh_transport_pdu);
+mesh_segmented_pdu_t * btstack_memory_mesh_segmented_pdu_get(void);
+void   btstack_memory_mesh_segmented_pdu_free(mesh_segmented_pdu_t *mesh_segmented_pdu);
+mesh_upper_transport_pdu_t * btstack_memory_mesh_upper_transport_pdu_get(void);
+void   btstack_memory_mesh_upper_transport_pdu_free(mesh_upper_transport_pdu_t *mesh_upper_transport_pdu);
 mesh_network_key_t * btstack_memory_mesh_network_key_get(void);
 void   btstack_memory_mesh_network_key_free(mesh_network_key_t *mesh_network_key);
 mesh_transport_key_t * btstack_memory_mesh_transport_key_get(void);

@@ -36,10 +36,15 @@
  */
 
 #define BTSTACK_FILE__ "mod_player.c"
+// *****************************************************************************
+/* EXAMPLE_START(mod_player): Audio Driver - Play 80's MOD Song
+ *
+ */
 
 #include "btstack.h"
 #include "hxcmod.h"
 #include "mods/mod.h"
+#include <stdio.h>
 
 static modcontext mod_context;
 
@@ -70,3 +75,5 @@ int btstack_main(int argc, const char * argv[]){
 
     return 0;
 }
+
+/* EXAMPLE_END */

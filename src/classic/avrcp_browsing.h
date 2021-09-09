@@ -35,10 +35,8 @@
  *
  */
 
-/*
- * avrcp_browsing.h
- * 
- * Audio/Video Remote Control Profile (Browsing)
+/**
+ * @title AVRCP Browsing
  *
  */
 
@@ -105,6 +103,11 @@ uint8_t avrcp_browsing_decline_incoming_connection(uint16_t avrcp_browsing_cid);
  * @returns status
  */
 uint8_t avrcp_browsing_disconnect(uint16_t avrcp_browsing_cid);
+
+/**
+ * @brief De-Init AVRCP Browsing
+ */
+void avrcp_browsing_deinit(void);
 
 /* API_END */
 

@@ -42,7 +42,7 @@
  */
 
 // *****************************************************************************
-/* EXAMPLE_START(spp_streamer_client): Client for SPP Streamer
+/* EXAMPLE_START(spp_streamer_client): Performance - Stream Data over SPP (Client)
  * 
  * @text Note: The SPP Streamer Client scans for and connects to SPP Streamer,
  * and measures the throughput.
@@ -79,7 +79,7 @@ typedef enum {
     W4_PEER_COD,
     W4_SCAN_COMPLETE,
     W4_SDP_RESULT,
-    W4_SDP_COMPLETE,
+    W2_SEND_SDP_QUERY,
     W4_RFCOMM_CHANNEL,
     SENDING,
     DONE
@@ -89,6 +89,7 @@ static uint8_t   test_data[NUM_ROWS * NUM_COLS];
 static uint16_t  spp_test_data_len;
 
 static btstack_packet_callback_registration_t hci_event_callback_registration;
+static btstack_context_callback_registration_t handle_sdp_client_query_request;
 
 static bd_addr_t peer_addr;
 static state_t state;
@@ -204,7 +205,7 @@ static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uin
     UNUSED(channel);
     UNUSED(size);
 
-    switch (packet[0]){
+    switch (hci_event_packet_get_type(packet)){
         case SDP_EVENT_QUERY_RFCOMM_SERVICE:
             rfcomm_server_channel = sdp_event_query_rfcomm_service_get_rfcomm_channel(packet);
             break;
@@ -220,8 +221,18 @@ static void handle_query_rfcomm_event(uint8_t packet_type, uint16_t channel, uin
             printf("SDP query done, channel %u.\n", rfcomm_server_channel);
             rfcomm_create_channel(packet_handler, peer_addr, rfcomm_server_channel, NULL); 
             break;
+        default:
+            break;
     }
 }
+
+static void handle_start_sdp_client_query(void * context){
+    UNUSED(context);
+    if (state != W2_SEND_SDP_QUERY) return;
+    state = W4_RFCOMM_CHANNEL;
+    sdp_client_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, peer_addr, BLUETOOTH_ATTRIBUTE_PUBLIC_BROWSE_ROOT);               
+}
+
 
 /* 
  * @section Gerenal Packet Handler
@@ -267,8 +278,9 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                             break;                        
                         case W4_SCAN_COMPLETE:
                             printf("Start to connect and query for SPP service\n");
-                            state = W4_RFCOMM_CHANNEL;
-                            sdp_client_query_rfcomm_channel_and_name_for_uuid(&handle_query_rfcomm_event, peer_addr, BLUETOOTH_ATTRIBUTE_PUBLIC_BROWSE_ROOT);
+                            state = W2_SEND_SDP_QUERY;
+                            handle_sdp_client_query_request.callback = &handle_start_sdp_client_query;
+                            (void) sdp_client_register_query_callback(&handle_sdp_client_query_request);
                             break;
                         default:
                             break;
@@ -291,8 +303,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                     break;
 
                 case RFCOMM_EVENT_INCOMING_CONNECTION:
-					// data: event (8), len(8), address(48), channel (8), rfcomm_cid (16)
-                    rfcomm_event_incoming_connection_get_bd_addr(packet, event_addr); 
+                    rfcomm_event_incoming_connection_get_bd_addr(packet, event_addr);
                     rfcomm_channel_nr = rfcomm_event_incoming_connection_get_server_channel(packet);
                     rfcomm_cid = rfcomm_event_incoming_connection_get_rfcomm_cid(packet);
                     printf("RFCOMM channel %u requested for %s\n", rfcomm_channel_nr, bd_addr_to_str(event_addr));
@@ -300,7 +311,6 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
 					break;
 					
 				case RFCOMM_EVENT_CHANNEL_OPENED:
-					// data: event(8), len(8), status (8), address (48), server channel(8), rfcomm_cid(16), max frame size(16)
 					if (rfcomm_event_channel_opened_get_status(packet)) {
                         printf("RFCOMM channel open failed, status %u\n", rfcomm_event_channel_opened_get_status(packet));
                     } else {
@@ -320,7 +330,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
                             spp_test_data_len = sizeof(test_data);
                         }
                         spp_create_test_data();
-
+                        state = SENDING;
                         // start sending
                         rfcomm_request_can_send_now_event(rfcomm_cid);
 #endif
@@ -353,6 +363,7 @@ static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *pack
             test_track_transferred(size);
             
 #if 0
+            // optional: print received data as ASCII text
             printf("RCV: '");
             for (i=0;i<size;i++){
                 putchar(packet[i]);

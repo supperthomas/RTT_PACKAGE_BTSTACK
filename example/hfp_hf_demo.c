@@ -43,7 +43,7 @@
  */
 
 // *****************************************************************************
-/* EXAMPLE_START(hfp_hs_demo): HFP Hands-Free (HF) Demo
+/* EXAMPLE_START(hfp_hs_demo): HFP HF - Hands-Free
  *
  * @text This  HFP Hands-Free example demonstrates how to receive 
  * an output from a remote HFP audio gateway (AG), and, 
@@ -105,6 +105,9 @@ static void dump_supported_codecs(void){
                 } else {
                     mSBC_skipped = 1;
                 }
+                break;
+            default:
+                btstack_assert(false);
                 break;
         }
     }
@@ -438,7 +441,8 @@ static void stdin_process(char c){
 
 static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * event, uint16_t event_size){
     UNUSED(channel);
-    
+    uint8_t status;
+
     switch (packet_type){
 
         case HCI_SCO_DATA_PACKET:
@@ -447,7 +451,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
             break;
 
         case HCI_EVENT_PACKET:
-            switch (event[0]){
+            switch (hci_event_packet_get_type(event)){
                 case HCI_EVENT_SCO_CAN_SEND_NOW:
                     sco_demo_send(sco_handle);
                     break;
@@ -459,9 +463,9 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                     break;
 
                 case HCI_EVENT_HFP_META:
-                    switch (event[2]) {   
+                    switch (hci_event_hfp_meta_get_subevent_code(event)) {
                         case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED:
-                            acl_handle = hfp_subevent_service_level_connection_established_get_con_handle(event);
+                            acl_handle = hfp_subevent_service_level_connection_established_get_acl_handle(event);
                             hfp_subevent_service_level_connection_established_get_bd_addr(event, device_addr);
                             printf("Service level connection established %s.\n\n", bd_addr_to_str(device_addr));
                             break;
@@ -470,10 +474,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                             printf("Service level connection released.\n\n");
                             break;
                         case HFP_SUBEVENT_AUDIO_CONNECTION_ESTABLISHED:
-                            if (hfp_subevent_audio_connection_established_get_status(event)){
-                                printf("Audio connection establishment failed with status %u\n", hfp_subevent_audio_connection_established_get_status(event));
+                            status = hfp_subevent_audio_connection_established_get_status(event);
+                            if (status != ERROR_CODE_SUCCESS){
+                                printf("Audio connection establishment failed with status 0x%02x\n", status);
                             } else {
-                                sco_handle = hfp_subevent_audio_connection_established_get_handle(event);
+                                sco_handle = hfp_subevent_audio_connection_established_get_sco_handle(event);
                                 printf("Audio connection established with SCO handle 0x%04x.\n", sco_handle);
                                 negotiated_codec = hfp_subevent_audio_connection_established_get_negotiated_codec(event);
                                 switch (negotiated_codec){
@@ -497,15 +502,11 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                             sco_demo_close();
                             break;
                         case HFP_SUBEVENT_COMPLETE:
-                            switch (cmd){
-                                case 'd':
-                                    printf("HFP AG registration status update enabled.\n");
-                                    break;
-                                case 'e':
-                                    printf("HFP AG registration status update for individual indicators set.\n");
-                                    break;
-                                default:
-                                    break;
+                            status = hfp_subevent_complete_get_status(event);
+                            if (status == ERROR_CODE_SUCCESS){
+                                printf("Cmd \'%c\' succeeded\n", cmd);
+                            } else {
+                                printf("Cmd \'%c\' failed with status 0x%02x\n", cmd, status);
                             }
                             break;
                         case HFP_SUBEVENT_AG_INDICATOR_STATUS_CHANGED:
@@ -523,7 +524,7 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                                 (char *) hfp_subevent_network_operator_changed_get_network_operator_name(event));          
                             break;
                         case HFP_SUBEVENT_EXTENDED_AUDIO_GATEWAY_ERROR:
-                            printf("EXTENDED_AUDIO_GATEWAY_ERROR_REPORT, status : %d\n", 
+                            printf("EXTENDED_AUDIO_GATEWAY_ERROR_REPORT, status : 0x%02x\n",
                                 hfp_subevent_extended_audio_gateway_error_get_error(event));
                             break;
                         case HFP_SUBEVENT_RING:
@@ -555,7 +556,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                             printf("  - number    : %s \n", hfp_subevent_enhanced_call_status_get_bnip_number(event));
                             break;
                         default:
-                            printf("event not handled %u\n", event[2]);
                             break;
                     }
                     break;

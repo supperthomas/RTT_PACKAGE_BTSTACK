@@ -53,6 +53,7 @@
 #include "ble/att_server.h"
 #include "btstack_util.h"
 #include "bluetooth_gatt.h"
+#include "btstack_debug.h"
 
 #include "ble/gatt-service/device_information_service_server.h"
 
@@ -91,7 +92,7 @@ static uint16_t device_information_service_read_callback(hci_con_handle_t con_ha
 	UNUSED(con_handle);	// ok: info same for all devices
 	unsigned int i;
 	for (i=0;i<NUM_INFORMATION_FIELDS;i++){
-		if (device_information_fields[i].value_handle == attribute_handle) {
+		if ((device_information_fields[i].value_handle == attribute_handle) && (device_information_fields[i].data != NULL)){
 			return att_read_callback_handle_blob(device_information_fields[i].data, device_information_fields[i].len, offset, buffer, buffer_size);
 		};
 	}
@@ -116,8 +117,9 @@ void device_information_service_server_init(void){
     // get service handle range
 	uint16_t start_handle;
 	uint16_t end_handle;
-	int service_found = gatt_server_get_get_handle_range_for_service_with_uuid16(ORG_BLUETOOTH_SERVICE_DEVICE_INFORMATION, &start_handle, &end_handle);
-	if (!service_found) return;
+	int service_found = gatt_server_get_handle_range_for_service_with_uuid16(ORG_BLUETOOTH_SERVICE_DEVICE_INFORMATION, &start_handle, &end_handle);
+	btstack_assert(service_found != 0);
+	UNUSED(service_found);
 
 	// set length for fixed size characateristics
 	device_information_fields[SYSTEM_ID].data = device_information_system_id;

@@ -42,7 +42,7 @@
  */
 
 // *****************************************************************************
-/* EXAMPLE_START(hfp_ag_demo): HFP Audio Gateway (AG) Demo
+/* EXAMPLE_START(hfp_ag_demo): HFP AG - Audio Gateway
  *
  * @text This HFP Audio Gateway example demonstrates how to receive 
  * an output from a remote HFP Hands-Free (HF) unit, and, 
@@ -127,6 +127,9 @@ static void dump_supported_codecs(void){
                     mSBC_skipped = 1;
                 }
                 break;
+            default:
+                btstack_assert(false);
+                break;
         }
     }
     printf("\n");
@@ -150,6 +153,7 @@ static void show_usage(void){
     printf("b - establish AUDIO connection          | B - release AUDIO connection\n");
     printf("c - simulate incoming call from 1234567 | C - simulate call from 1234567 dropped\n");
     printf("d - report AG failure\n");
+    printf("D - delete all link keys\n");
     printf("e - answer call on AG                   | E - reject call on AG\n");
     printf("r - disable in-band ring tone           | R - enable in-band ring tone\n");
     printf("f - Disable cellular network            | F - Enable cellular network\n");
@@ -207,6 +211,10 @@ static void stdin_process(char cmd){
             printf("Simulate incoming call from 1234567\n");
             hfp_ag_set_clip(129, "1234567");
             hfp_ag_incoming_call();
+            break;
+        case 'D':
+            printf("Deleting all link keys\n");
+            gap_delete_all_link_keys();
             break;
         case 'm':
             log_info("USER:\'%c\'", cmd);
@@ -443,23 +451,14 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
 
             if (hci_event_packet_get_type(event) != HCI_EVENT_HFP_META) return;
 
-            if ((event_size > 3)
-                && (event[3] != 0)
-                && (hci_event_hfp_meta_get_subevent_code(event) != HFP_SUBEVENT_PLACE_CALL_WITH_NUMBER)
-                && (hci_event_hfp_meta_get_subevent_code(event) != HFP_SUBEVENT_ATTACH_NUMBER_TO_VOICE_TAG)
-                && (hci_event_hfp_meta_get_subevent_code(event) != HFP_SUBEVENT_TRANSMIT_DTMF_CODES)){
-                printf("ERROR, status: %u\n", event[3]);
-                return;
-            }
-
-            switch (hci_event_hfp_meta_get_subevent_code(event)) {   
+            switch (hci_event_hfp_meta_get_subevent_code(event)) {
                 case HFP_SUBEVENT_SERVICE_LEVEL_CONNECTION_ESTABLISHED:
                     status = hfp_subevent_service_level_connection_established_get_status(event);
-                    if (status){
+                    if (status != ERROR_CODE_SUCCESS){
                         printf("Connection failed, staus 0x%02x\n", status);
                         break;
                     }
-                    acl_handle = hfp_subevent_service_level_connection_established_get_con_handle(event);
+                    acl_handle = hfp_subevent_service_level_connection_established_get_acl_handle(event);
                     hfp_subevent_service_level_connection_established_get_bd_addr(event, device_addr);
                     printf("Service level connection established to %s.\n", bd_addr_to_str(device_addr));
                     dump_supported_codecs();
@@ -474,10 +473,10 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                     acl_handle = HCI_CON_HANDLE_INVALID;
                     break;
                 case HFP_SUBEVENT_AUDIO_CONNECTION_ESTABLISHED:
-                    if (hfp_subevent_audio_connection_established_get_status(event)){
+                    if (hfp_subevent_audio_connection_established_get_status(event) != ERROR_CODE_SUCCESS){
                         printf("Audio connection establishment failed with status %u\n", hfp_subevent_audio_connection_established_get_status(event));
                     } else {
-                        sco_handle = hfp_subevent_audio_connection_established_get_handle(event);
+                        sco_handle = hfp_subevent_audio_connection_established_get_sco_handle(event);
                         printf("Audio connection established with SCO handle 0x%04x.\n", sco_handle);
                         negotiated_codec = hfp_subevent_audio_connection_established_get_negotiated_codec(event);
                         switch (negotiated_codec){
@@ -532,7 +531,6 @@ static void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t * even
                     printf("Call answered by HF\n");
                     break;
                 default:
-                    printf("Event not handled %u\n", hci_event_hfp_meta_get_subevent_code(event));
                     break;
             }
             break;

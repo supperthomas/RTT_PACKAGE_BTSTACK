@@ -35,12 +35,10 @@
  *
  */
 
-// *****************************************************************************
-//
-// HSP Audio Gateway
-//
-// *****************************************************************************
-
+/**
+ * @title HSP Audio Gateway
+ *
+ */
 
 #ifndef btstack_hsp_ag_h
 #define btstack_hsp_ag_h
@@ -164,6 +162,17 @@ void hsp_ag_enable_custom_commands(int enable);
  * @param result 
  */
 int hsp_ag_send_result(char * result);
+
+/**
+ * @brief Set packet types used for outgoing SCO connection requests
+ * @param common single packet_types: SCO_PACKET_TYPES_*
+ */
+void hsp_ag_set_sco_packet_types(uint16_t packet_types);
+
+/**
+ * @brief De-Init HSP AG
+ */
+void hsp_ag_deinit(void);
 
 /* API_END */
 

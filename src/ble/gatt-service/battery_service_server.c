@@ -47,6 +47,8 @@
 #include "ble/att_server.h"
 #include "btstack_util.h"
 #include "bluetooth_gatt.h"
+#include "btstack_debug.h"
+
 
 #include "ble/gatt-service/battery_service_server.h"
 
@@ -97,8 +99,9 @@ void battery_service_server_init(uint8_t value){
 	// get service handle range
 	uint16_t start_handle = 0;
 	uint16_t end_handle   = 0xfff;
-	int service_found = gatt_server_get_get_handle_range_for_service_with_uuid16(ORG_BLUETOOTH_SERVICE_BATTERY_SERVICE, &start_handle, &end_handle);
-	if (!service_found) return;
+	int service_found = gatt_server_get_handle_range_for_service_with_uuid16(ORG_BLUETOOTH_SERVICE_BATTERY_SERVICE, &start_handle, &end_handle);
+	btstack_assert(service_found != 0);
+	UNUSED(service_found);
 
 	// get characteristic value handle and client configuration handle
 	battery_value_handle_value = gatt_server_get_value_handle_for_characteristic_with_uuid16(start_handle, end_handle, ORG_BLUETOOTH_CHARACTERISTIC_BATTERY_LEVEL);
@@ -114,7 +117,7 @@ void battery_service_server_init(uint8_t value){
 
 void battery_service_server_set_battery_value(uint8_t value){
 	battery_value = value;
-	if (battery_value_client_configuration){
+	if (battery_value_client_configuration != 0){
 		battery_callback.callback = &battery_service_can_send_now;
 		battery_callback.context  = (void*) (uintptr_t) battery_value_client_configuration_connection;
 		att_server_register_can_send_now_callback(&battery_callback, battery_value_client_configuration_connection);

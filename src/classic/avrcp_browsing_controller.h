@@ -35,10 +35,8 @@
  *
  */
 
-/*
- * avrcp_browsing_controller.h
- * 
- * Audio/Video Remote Control Profile Browsing
+/**
+ * @title AVRCP Browsing Controller
  *
  */
 
@@ -188,6 +186,11 @@ uint8_t avrcp_browsing_controller_get_item_attributes_for_scope(uint16_t avrcp_b
  * @return status 
  **/
 uint8_t avrcp_browsing_controller_search(uint16_t avrcp_browsing_cid, uint16_t search_str_len, char * search_str);
+
+/**
+ * @brief De-Init AVRCP Browsing Controller
+ */
+void avrcp_browsing_controller_deinit(void);
 
 /* API_END */
 

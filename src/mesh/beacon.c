@@ -39,6 +39,7 @@
 
 #include "mesh/beacon.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "ble/core.h"
@@ -471,6 +472,7 @@ void beacon_unprovisioned_device_start(const uint8_t * device_uuid, uint16_t oob
     if (device_uuid){
         beacon_device_uuid = device_uuid;
         beacon_timer.process = &beacon_timer_handler;
+        btstack_run_loop_remove_timer(&beacon_timer);
         beacon_timer_handler(&beacon_timer);
     }
 #endif

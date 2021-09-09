@@ -35,10 +35,11 @@
  *
  */
 
-/*
- *  btstack_debug.h
+/**
+ * @title Debug Messages
  *
- *  allow to funnel debug & error messages 
+ * Allow to funnel debug and error messages. 
+ *
  */
 
 #ifndef DEBUG_H
@@ -47,8 +48,6 @@
 #include "btstack_config.h"
 #include "btstack_defines.h"
 #include "hci_dump.h"
-
-#include <stdio.h>
 
 #ifdef __AVR__
 #include <avr/pgmspace.h>
@@ -77,6 +76,13 @@ void btstack_assert_failed(const char * file, uint16_t line_nr);
 // asserts off
 #define btstack_assert(condition)         {}
 #endif
+#endif
+
+// mark code that should not be reached. Similar to assert, but mapped to NOP for coverage
+#ifdef UNIT_TEST
+#define btstack_unreachable()
+#else
+#define btstack_unreachable() btstack_assert(false)
 #endif
 
 // allow to provide port specific printf
@@ -112,8 +118,11 @@ void btstack_assert_failed(const char * file, uint16_t line_nr);
 #define log_error(...) (void)(0)
 #endif
 
+/* API_START */
+
 /** 
  * @brief Log Security Manager key via log_info
+ * @param name
  * @param key to log
  */
 void log_info_key(const char * name, sm_key_t key);
@@ -126,9 +135,12 @@ void log_info_key(const char * name, sm_key_t key);
 void log_info_hexdump(const void *data, int size);
 
 /**
- * @brief Hexdump via log_debug * @param data
+ * @brief Hexdump via log_debug 
+ * @param data
  * @param size
  */
 void log_debug_hexdump(const void *data, int size);
+
+/* API_END */
 
 #endif // DEBUG_H

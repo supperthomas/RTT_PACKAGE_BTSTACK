@@ -38,7 +38,7 @@
 #define BTSTACK_FILE__ "nordic_spp_le_streamer.c"
 
 // *****************************************************************************
-/* EXAMPLE_START(nordic_spp_le_streamer): LE Streamer - Stream data over GATT.
+/* EXAMPLE_START(nordic_spp_le_streamer): LE Nordic SPP-like Streamer Server 
  *
  * @text All newer operating systems provide GATT Client functionality.
  * This example shows how to get a maximal throughput via BLE:
@@ -170,42 +170,41 @@ static void hci_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
     uint16_t conn_interval;
     hci_con_handle_t con_handle;
 
-    switch (packet_type) {
-        case HCI_EVENT_PACKET:
-            switch (hci_event_packet_get_type(packet)) {
-                case BTSTACK_EVENT_STATE:
-                    // BTstack activated, get started
-                    if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING) {
-                        printf("To start the streaming, please run nRF Toolbox -> UART to connect.\n");
-                    } 
-                    break;
-                case HCI_EVENT_LE_META:
-                    switch (hci_event_le_meta_get_subevent_code(packet)) {
-                        case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
-                            // print connection parameters (without using float operations)
-                            con_handle    = hci_subevent_le_connection_complete_get_connection_handle(packet);
-                            conn_interval = hci_subevent_le_connection_complete_get_conn_interval(packet);
-                            printf("LE Connection - Connection Interval: %u.%02u ms\n", conn_interval * 125 / 100, 25 * (conn_interval & 3));
-                            printf("LE Connection - Connection Latency: %u\n", hci_subevent_le_connection_complete_get_conn_latency(packet));
+    if (packet_type != HCI_EVENT_PACKET) return;
 
-                            // request min con interval 15 ms for iOS 11+ 
-                            printf("LE Connection - Request 15 ms connection interval\n");
-                            gap_request_connection_parameter_update(con_handle, 12, 12, 0, 0x0048);
-                            break;
-                        case HCI_SUBEVENT_LE_CONNECTION_UPDATE_COMPLETE:
-                            // print connection parameters (without using float operations)
-                            con_handle    = hci_subevent_le_connection_update_complete_get_connection_handle(packet);
-                            conn_interval = hci_subevent_le_connection_update_complete_get_conn_interval(packet);
-                            printf("LE Connection - Connection Param update - connection interval %u.%02u ms, latency %u\n", conn_interval * 125 / 100,
-                                25 * (conn_interval & 3), hci_subevent_le_connection_update_complete_get_conn_latency(packet));
-                            break;
-                        default:
-                            break;
-                    }
-                    break;  
+    switch (hci_event_packet_get_type(packet)) {
+        case BTSTACK_EVENT_STATE:
+            // BTstack activated, get started
+            if (btstack_event_state_get_state(packet) == HCI_STATE_WORKING) {
+                printf("To start the streaming, please run nRF Toolbox -> UART to connect.\n");
+            } 
+            break;
+        case HCI_EVENT_LE_META:
+            switch (hci_event_le_meta_get_subevent_code(packet)) {
+                case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
+                    // print connection parameters (without using float operations)
+                    con_handle    = hci_subevent_le_connection_complete_get_connection_handle(packet);
+                    conn_interval = hci_subevent_le_connection_complete_get_conn_interval(packet);
+                    printf("LE Connection - Connection Interval: %u.%02u ms\n", conn_interval * 125 / 100, 25 * (conn_interval & 3));
+                    printf("LE Connection - Connection Latency: %u\n", hci_subevent_le_connection_complete_get_conn_latency(packet));
+
+                    // request min con interval 15 ms for iOS 11+ 
+                    printf("LE Connection - Request 15 ms connection interval\n");
+                    gap_request_connection_parameter_update(con_handle, 12, 12, 0, 0x0048);
+                    break;
+                case HCI_SUBEVENT_LE_CONNECTION_UPDATE_COMPLETE:
+                    // print connection parameters (without using float operations)
+                    con_handle    = hci_subevent_le_connection_update_complete_get_connection_handle(packet);
+                    conn_interval = hci_subevent_le_connection_update_complete_get_conn_interval(packet);
+                    printf("LE Connection - Connection Param update - connection interval %u.%02u ms, latency %u\n", conn_interval * 125 / 100,
+                        25 * (conn_interval & 3), hci_subevent_le_connection_update_complete_get_conn_latency(packet));
+                    break;
                 default:
                     break;
             }
+            break;  
+        default:
+            break;
     }
 }
 /* LISTING_END */
@@ -221,37 +220,37 @@ static void att_packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *
     UNUSED(channel);
     UNUSED(size);
     
+    if (packet_type != HCI_EVENT_PACKET) return;
+
     int mtu;
     nordic_spp_le_streamer_connection_t * context;
-    switch (packet_type) {
-        case HCI_EVENT_PACKET:
-            switch (hci_event_packet_get_type(packet)) {
-                case ATT_EVENT_CONNECTED:
-                    // setup new 
-                    context = connection_for_conn_handle(HCI_CON_HANDLE_INVALID);
-                    if (!context) break;
-                    context->counter = 'A';
-                    context->test_data_len = ATT_DEFAULT_MTU - 4;   // -1 for nordic 0x01 packet type
-                    context->connection_handle = att_event_connected_get_handle(packet);
-                    break;
-                case ATT_EVENT_MTU_EXCHANGE_COMPLETE:
-                    mtu = att_event_mtu_exchange_complete_get_MTU(packet) - 3;
-                    context = connection_for_conn_handle(att_event_mtu_exchange_complete_get_handle(packet));
-                    if (!context) break;
-                    context->test_data_len = btstack_min(mtu - 3, sizeof(context->test_data));
-                    printf("%c: ATT MTU = %u => use test data of len %u\n", context->name, mtu, context->test_data_len);
-                    break;
-                case ATT_EVENT_DISCONNECTED:
-                    context = connection_for_conn_handle(att_event_disconnected_get_handle(packet));
-                    if (!context) break;
-                    // free connection
-                    printf("%c: Disconnect\n", context->name);                    
-                    context->le_notification_enabled = 0;
-                    context->connection_handle = HCI_CON_HANDLE_INVALID;
-                    break;
-                default:
-                    break;
-            }
+    
+    switch (hci_event_packet_get_type(packet)) {
+        case ATT_EVENT_CONNECTED:
+            // setup new 
+            context = connection_for_conn_handle(HCI_CON_HANDLE_INVALID);
+            if (!context) break;
+            context->counter = 'A';
+            context->test_data_len = ATT_DEFAULT_MTU - 4;   // -1 for nordic 0x01 packet type
+            context->connection_handle = att_event_connected_get_handle(packet);
+            break;
+        case ATT_EVENT_MTU_EXCHANGE_COMPLETE:
+            mtu = att_event_mtu_exchange_complete_get_MTU(packet) - 3;
+            context = connection_for_conn_handle(att_event_mtu_exchange_complete_get_handle(packet));
+            if (!context) break;
+            context->test_data_len = btstack_min(mtu - 3, sizeof(context->test_data));
+            printf("%c: ATT MTU = %u => use test data of len %u\n", context->name, mtu, context->test_data_len);
+            break;
+        case ATT_EVENT_DISCONNECTED:
+            context = connection_for_conn_handle(att_event_disconnected_get_handle(packet));
+            if (!context) break;
+            // free connection
+            printf("%c: Disconnect\n", context->name);                    
+            context->le_notification_enabled = 0;
+            context->connection_handle = HCI_CON_HANDLE_INVALID;
+            break;
+        default:
+            break;
     }
 }
 /* LISTING_END */
@@ -304,21 +303,42 @@ static void nordic_can_send(void * some_context){
 } 
 /* LISTING_END */
 
-static void nordic_data_received(hci_con_handle_t tx_con_handle, const uint8_t * data, uint16_t size){
-    nordic_spp_le_streamer_connection_t * context = connection_for_conn_handle(tx_con_handle);
-
-    if (!context) return;
-
-    if (size == 0 && context->le_notification_enabled == 0){
-        context->le_notification_enabled = 1;
-        test_reset(context);
-        context->send_request.callback = &nordic_can_send;
-        nordic_spp_service_server_request_can_send_now(&context->send_request, context->connection_handle);
-    } else {
-        printf("RECV: ");
-        printf_hexdump(data, size);
-        test_track_sent(context, size);
-   }
+static void nordic_spp_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size){
+    hci_con_handle_t con_handle;
+    nordic_spp_le_streamer_connection_t * context;
+    switch (packet_type){
+        case HCI_EVENT_PACKET:
+            if (hci_event_packet_get_type(packet) != HCI_EVENT_GATTSERVICE_META) break;
+            switch (hci_event_gattservice_meta_get_subevent_code(packet)){
+                case GATTSERVICE_SUBEVENT_SPP_SERVICE_CONNECTED:
+                    con_handle = gattservice_subevent_spp_service_connected_get_con_handle(packet);
+                    context = connection_for_conn_handle(con_handle);
+                    if (!context) break;
+                    context->le_notification_enabled = 1;
+                    test_reset(context);
+                    context->send_request.callback = &nordic_can_send;
+                    nordic_spp_service_server_request_can_send_now(&context->send_request, context->connection_handle);
+                    break;
+                case GATTSERVICE_SUBEVENT_SPP_SERVICE_DISCONNECTED:
+                    con_handle = HCI_CON_HANDLE_INVALID;
+                    context = connection_for_conn_handle(con_handle);
+                    if (!context) break;
+                    context->le_notification_enabled = 0;
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case RFCOMM_DATA_PACKET:
+            printf("RECV: ");
+            printf_hexdump(packet, size);
+            context = connection_for_conn_handle((hci_con_handle_t) channel);
+            if (!context) break;
+            test_track_sent(context, size);
+            break;
+        default:
+            break;
+    }
 }
 
 int btstack_main(void);
@@ -339,7 +359,7 @@ int btstack_main(void){
     att_server_init(profile_data, NULL, NULL);    
     
     // setup Nordic SPP service
-    nordic_spp_service_server_init(&nordic_data_received);
+    nordic_spp_service_server_init(&nordic_spp_packet_handler);
 
     // register for ATT events
     att_server_register_packet_handler(att_packet_handler);

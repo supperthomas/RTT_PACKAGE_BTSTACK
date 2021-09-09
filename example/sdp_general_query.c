@@ -38,7 +38,7 @@
 #define BTSTACK_FILE__ "sdp_general_query.c"
  
 // *****************************************************************************
-/* EXAMPLE_START(sdp_general_query): Dump remote SDP Records
+/* EXAMPLE_START(sdp_general_query): SDP Client - Query Remote SDP Records
  *
  * @text The example shows how the SDP Client is used to get a list of 
  * service records on a remote device. 
@@ -83,7 +83,7 @@ static btstack_packet_callback_registration_t hci_event_callback_registration;
 static void packet_handler (uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 static void handle_sdp_client_query_result(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 
-static void sdp_client_init(void){
+static void sdp_general_query_init(void){
     // init L2CAP
     l2cap_init();
 
@@ -150,7 +150,7 @@ static void handle_sdp_client_query_result(uint8_t packet_type, uint16_t channel
     UNUSED(channel);
     UNUSED(size);
 
-    switch (packet[0]){
+    switch (hci_event_packet_get_type(packet)){
         case SDP_EVENT_QUERY_ATTRIBUTE_VALUE:
             // handle new record
             if (sdp_event_query_attribute_byte_get_record_id(packet) != record_id){
@@ -172,6 +172,8 @@ static void handle_sdp_client_query_result(uint8_t packet_type, uint16_t channel
                 break;
             } 
             printf("SDP query done.\n");
+            break;
+        default:
             break;
     }
 }
@@ -203,8 +205,8 @@ int btstack_main(int argc, const char * argv[]){
     (void)argv;
     sscanf_bd_addr(remote_addr_string, remote_addr);
 #endif
-    
-    sdp_client_init();
+
+    sdp_general_query_init();
     // turn on!
     hci_power_control(HCI_POWER_ON);
             

@@ -35,11 +35,10 @@
  *
  */
  
-// *****************************************************************************
-//
-// HFP mSBC encoder wrapper
-//
-// *****************************************************************************
+/**
+ * @title HFP mSBC Encoder 
+ *
+ */
 
 #ifndef HFP_MSBC_H
 #define HFP_MSBC_H
@@ -85,6 +84,11 @@ int  hfp_msbc_num_bytes_in_stream(void);
  * @param size num bytes to read from stream
  */
 void hfp_msbc_read_from_stream(uint8_t * buffer, int size);
+
+/**
+ * @brief De-Init HFP mSBC Codec
+ */
+void hfp_msbc_deinit(void);
 
 /* API_END */
 

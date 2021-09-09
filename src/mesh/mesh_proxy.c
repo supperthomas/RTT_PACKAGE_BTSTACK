@@ -39,6 +39,7 @@
 
 #include "mesh/mesh_proxy.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "bluetooth_company_id.h"
@@ -358,11 +359,15 @@ static void proxy_configuration_message_handler(mesh_network_callback_type_t cal
             opcode = network_pdu_data[0];
             switch (opcode){
                 case MESH_PROXY_CONFIGURATION_MESSAGE_OPCODE_SET_FILTER_TYPE:{
-                    switch (network_pdu_data[1]){
+                    switch ((mesh_proxy_configuration_filter_type_t) network_pdu_data[1]){
                         case MESH_PROXY_CONFIGURATION_FILTER_TYPE_SET_WHITE_LIST:
                         case MESH_PROXY_CONFIGURATION_FILTER_TYPE_BLACK_LIST:
                             proxy_configuration_filter_type = network_pdu_data[1];
                             break;
+                        default:
+                            // invalid filter type, ignore
+                            btstack_memory_mesh_network_pdu_free(received_network_pdu);
+                            return;
                     }
                     
                     uint8_t  ctl          = 1;
@@ -381,7 +386,7 @@ static void proxy_configuration_message_handler(mesh_network_callback_type_t cal
                     big_endian_store_16(data, pos, proxy_configuration_filter_list_len);
 
                     mesh_network_setup_pdu(network_pdu, netkey_index, nid, ctl, ttl, seq, src, dest, data, sizeof(data));
-                    mesh_network_encrypt_proxy_configuration_message(network_pdu, &request_can_send_now_proxy_configuration_callback_handler);
+                    mesh_network_encrypt_proxy_configuration_message(network_pdu);
                     
                     // received_network_pdu is processed
                     btstack_memory_mesh_network_pdu_free(received_network_pdu);
@@ -389,6 +394,7 @@ static void proxy_configuration_message_handler(mesh_network_callback_type_t cal
                 }
                 default:
                     printf("proxy config not implemented, opcode %d\n", opcode);
+                    btstack_memory_mesh_network_pdu_free(received_network_pdu);
                     break;
             }
             break;
@@ -400,6 +406,9 @@ static void proxy_configuration_message_handler(mesh_network_callback_type_t cal
         case MESH_NETWORK_PDU_SENT:
             // printf("test MESH_PROXY_PDU_SENT\n");
             // mesh_lower_transport_received_mesage(MESH_NETWORK_PDU_SENT, network_pdu);
+            break;
+        case MESH_NETWORK_PDU_ENCRYPTED:
+            request_can_send_now_proxy_configuration_callback_handler(received_network_pdu);
             break;
         default:
             break;

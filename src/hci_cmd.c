@@ -45,12 +45,16 @@
 
 #include "btstack_config.h"
 
-#include "classic/sdp_util.h"
 #include "hci.h"
 #include "hci_cmd.h"
 #include "btstack_debug.h"
 
 #include <string.h>
+
+
+#ifdef ENABLE_SDP
+#include "classic/sdp_util.h"
+#endif
 
 // calculate combined ogf/ocf value
 #define OPCODE(ogf, ocf) ((ocf) | ((ogf) << 10))
@@ -83,31 +87,37 @@ uint16_t hci_cmd_create_from_template(uint8_t *hci_cmd_buffer, const hci_cmd_t *
     while (*format) {
         switch(*format) {
             case '1': //  8 bit value
-            case '2': // 16 bit value
-            case 'H': // hci_handle
-                word = va_arg(argptr, int);  // minimal va_arg is int: 2 bytes on 8+16 bit CPUs
+                // minimal va_arg is int: 2 bytes on 8+16 bit CPUs
+                word = va_arg(argptr, int); // LCOV_EXCL_BR_LINE
                 hci_cmd_buffer[pos++] = word & 0xffu;
-                if (*format == '2') {
-                    hci_cmd_buffer[pos++] = word >> 8;
-                } else if (*format == 'H') {
-                    // TODO implement opaque client connection handles
-                    //      pass module handle for now
-                    hci_cmd_buffer[pos++] = word >> 8;
-                } 
+                break;
+            case '2': // 16 bit value
+                // minimal va_arg is int: 2 bytes on 8+16 bit CPUs
+                word = va_arg(argptr, int); // LCOV_EXCL_BR_LINE
+                hci_cmd_buffer[pos++] = word & 0xffu;
+                hci_cmd_buffer[pos++] = word >> 8;
+                break;
+            case 'H': // hci_handle
+                // minimal va_arg is int: 2 bytes on 8+16 bit CPUs
+                word = va_arg(argptr, int); // LCOV_EXCL_BR_LINE
+                hci_cmd_buffer[pos++] = word & 0xffu;
+                hci_cmd_buffer[pos++] = word >> 8;
                 break;
             case '3':
-            case '4':
-                longword = va_arg(argptr, uint32_t);
-                // longword = va_arg(argptr, int);
+                longword = va_arg(argptr, uint32_t); // LCOV_EXCL_BR_LINE
                 hci_cmd_buffer[pos++] = longword;
                 hci_cmd_buffer[pos++] = longword >> 8;
                 hci_cmd_buffer[pos++] = longword >> 16;
-                if (*format == '4'){
-                    hci_cmd_buffer[pos++] = longword >> 24;
-                }
+                break;
+            case '4':
+                longword = va_arg(argptr, uint32_t); // LCOV_EXCL_BR_LINE
+                hci_cmd_buffer[pos++] = longword;
+                hci_cmd_buffer[pos++] = longword >> 8;
+                hci_cmd_buffer[pos++] = longword >> 16;
+                hci_cmd_buffer[pos++] = longword >> 24;
                 break;
             case 'B': // bt-addr
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 hci_cmd_buffer[pos++] = ptr[5];
                 hci_cmd_buffer[pos++] = ptr[4];
                 hci_cmd_buffer[pos++] = ptr[3];
@@ -116,17 +126,17 @@ uint16_t hci_cmd_create_from_template(uint8_t *hci_cmd_buffer, const hci_cmd_t *
                 hci_cmd_buffer[pos++] = ptr[0];
                 break;
             case 'D': // 8 byte data block
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 (void)memcpy(&hci_cmd_buffer[pos], ptr, 8);
                 pos += 8;
                 break;
             case 'E': // Extended Inquiry Information 240 octets
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 (void)memcpy(&hci_cmd_buffer[pos], ptr, 240);
                 pos += 240;
                 break;
             case 'N': { // UTF-8 string, null terminated
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 uint16_t len = strlen((const char*) ptr);
                 if (len > 248u) {
                     len = 248;
@@ -139,21 +149,21 @@ uint16_t hci_cmd_create_from_template(uint8_t *hci_cmd_buffer, const hci_cmd_t *
                 pos += 248;
                 break;
             }
-            case 'P': // 16 byte PIN code or link key
-                ptr = va_arg(argptr, uint8_t *);
+            case 'P': // 16 byte PIN code or link key in little endian
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 (void)memcpy(&hci_cmd_buffer[pos], ptr, 16);
                 pos += 16;
                 break;
 #ifdef ENABLE_BLE
             case 'A': // 31 bytes advertising data
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 (void)memcpy(&hci_cmd_buffer[pos], ptr, 31);
                 pos += 31;
                 break;
 #endif
 #ifdef ENABLE_SDP
             case 'S': { // Service Record (Data Element Sequence)
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 uint16_t len = de_get_len(ptr);
                 (void)memcpy(&hci_cmd_buffer[pos], ptr, len);
                 pos += len;
@@ -162,11 +172,16 @@ uint16_t hci_cmd_create_from_template(uint8_t *hci_cmd_buffer, const hci_cmd_t *
 #endif
 #ifdef ENABLE_LE_SECURE_CONNECTIONS
             case 'Q':
-                ptr = va_arg(argptr, uint8_t *);
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
                 reverse_bytes(ptr, &hci_cmd_buffer[pos], 32);
                 pos += 32;
                 break;
 #endif
+            case 'K':   // 16 byte OOB Data or Link Key in big endian
+                ptr = va_arg(argptr, uint8_t *); // LCOV_EXCL_BR_LINE
+                reverse_bytes(ptr, &hci_cmd_buffer[pos], 16);
+                pos += 16;
+                break;
             default:
                 break;
         }
@@ -409,7 +424,7 @@ const hci_cmd_t hci_user_passkey_request_negative_reply = {
  * @param r Simple Pairing Randomizer R
  */
 const hci_cmd_t hci_remote_oob_data_request_reply = {
-    HCI_OPCODE_HCI_REMOTE_OOB_DATA_REQUEST_REPLY, "BPP"
+    HCI_OPCODE_HCI_REMOTE_OOB_DATA_REQUEST_REPLY, "BKK"
 };
 
 /**
@@ -504,6 +519,17 @@ const hci_cmd_t hci_enhanced_accept_synchronous_connection = {
 };
 
 /**
+ * @param bd_addr
+ * @param c_192 Simple Pairing Hash C derived from P-192 public key
+ * @param r_192 Simple Pairing Randomizer derived from P-192 public key
+ * @param c_256 Simple Pairing Hash C derived from P-256 public key
+ * @param r_256 Simple Pairing Randomizer derived from P-256 public key
+ */
+const hci_cmd_t hci_remote_oob_extended_data_request_reply = {
+        HCI_OPCODE_HCI_REMOTE_OOB_EXTENDED_DATA_REQUEST_REPLY, "BKKKK"
+};
+
+/**
  *  Link Policy Commands 
  */
 
@@ -569,10 +595,34 @@ const hci_cmd_t hci_write_link_policy_settings = {
 };
 
 /**
+ * @param handle
+ * @param max_latency
+ * @param min_remote_timeout
+ * @param min_local_timeout
+ */
+const hci_cmd_t hci_sniff_subrating = {
+        HCI_OPCODE_HCI_SNIFF_SUBRATING, "H222"
+};
+
+/**
  * @param policy
  */
 const hci_cmd_t hci_write_default_link_policy_setting = {
     HCI_OPCODE_HCI_WRITE_DEFAULT_LINK_POLICY_SETTING, "2"
+};
+
+/**
+ * @param handle
+ * @param unused
+ * @param flow_direction
+ * @param service_type
+ * @param token_rate
+ * @param token_bucket_size
+ * @param peak_bandwidth
+ * @param access_latency
+ */
+const hci_cmd_t hci_flow_specification = {
+        HCI_OPCODE_HCI_FLOW_SPECIFICATION, "H1114444"
 };
 
 
@@ -791,10 +841,24 @@ const hci_cmd_t hci_write_current_iac_lap_two_iacs = {
 };
 
 /**
+ * @param inquiry_scan_type (0x00 = standard, 0x01 = interlaced)
+ */
+const hci_cmd_t hci_write_inquiry_scan_type = {
+    HCI_OPCODE_HCI_WRITE_INQUIRY_SCAN_TYPE,  "1"
+};
+
+/**
  * @param inquiry_mode (0x00 = standard, 0x01 = with RSSI, 0x02 = extended)
  */
 const hci_cmd_t hci_write_inquiry_mode = {
     HCI_OPCODE_HCI_WRITE_INQUIRY_MODE, "1"
+};
+
+/**
+ * @param page_scan_type (0x00 = standard, 0x01 = interlaced)
+ */
+const hci_cmd_t hci_write_page_scan_type = {
+    HCI_OPCODE_HCI_WRITE_PAGE_SCAN_TYPE, "1"
 };
 
 /**
@@ -852,8 +916,8 @@ const hci_cmd_t hci_write_secure_connections_host_support = {
 
 /**
  */
-const hci_cmd_t hci_read_local_extended_ob_data = {
-    HCI_OPCODE_HCI_READ_LOCAL_EXTENDED_OB_DATA, ""
+const hci_cmd_t hci_read_local_extended_oob_data = {
+    HCI_OPCODE_HCI_READ_LOCAL_EXTENDED_OOB_DATA, ""
     // return status, C_192, R_192, R_256, C_256
 };
 
@@ -1275,6 +1339,66 @@ const hci_cmd_t hci_le_generate_dhkey = {
 };
 
 /**
+ * @param Peer_Identity_Address_Type
+ * @param Peer_Identity_Address
+ * @param Peer_IRK
+ * @param Local_IRK
+ */
+const hci_cmd_t hci_le_add_device_to_resolving_list = {
+        HCI_OPCODE_HCI_LE_ADD_DEVICE_TO_RESOLVING_LIST, "1BPP"
+};
+
+/**
+ * @param Peer_Identity_Address_Type
+ * @param Peer_Identity_Address
+ */
+const hci_cmd_t hci_le_remove_device_from_resolving_list = {
+        HCI_OPCODE_HCI_LE_REMOVE_DEVICE_FROM_RESOLVING_LIST, "1B"
+};
+
+/**
+ */
+const hci_cmd_t hci_le_clear_resolving_list = {
+        HCI_OPCODE_HCI_LE_CLEAR_RESOLVING_LIST, ""
+};
+
+/**
+ */
+const hci_cmd_t hci_le_read_resolving_list_size = {
+        HCI_OPCODE_HCI_LE_READ_RESOLVING_LIST_SIZE, ""
+};
+
+/**
+ * @param Peer_Identity_Address_Type
+ * @param Peer_Identity_Address
+ */
+const hci_cmd_t hci_le_read_peer_resolvable_address = {
+        HCI_OPCODE_HCI_LE_READ_PEER_RESOLVABLE_ADDRESS, ""
+};
+
+/**
+ * @param Peer_Identity_Address_Type
+ * @param Peer_Identity_Address
+ */
+const hci_cmd_t hci_le_read_local_resolvable_address = {
+        HCI_OPCODE_HCI_LE_READ_LOCAL_RESOLVABLE_ADDRESS, ""
+};
+
+/**
+ * @param Address_Resolution_Enable
+ */
+const hci_cmd_t hci_le_set_address_resolution_enabled= {
+        HCI_OPCODE_HCI_LE_SET_ADDRESS_RESOLUTION_ENABLED, "1"
+};
+
+/**
+ * @param RPA_Timeout in seconds, range 0x0001 to 0x0E10, default: 900 s
+ */
+const hci_cmd_t hci_le_set_resolvable_private_address_timeout= {
+        HCI_OPCODE_HCI_LE_SET_RESOLVABLE_PRIVATE_ADDRESS_TIMEOUT, "2"
+};
+
+/**
  */
 const hci_cmd_t hci_le_read_maximum_data_length = {
     HCI_OPCODE_HCI_LE_READ_MAXIMUM_DATA_LENGTH, ""
@@ -1317,6 +1441,16 @@ const hci_cmd_t hci_le_set_phy = {
 // Broadcom / Cypress specific HCI commands
 
 /**
+ * @brief Enable Wide-Band Speech / mSBC decoding for PCM
+ * @param enable_wbs is 0 for disable, 1 for enable
+ * @param uuid_wbs is 2 for EV2/EV3
+ */
+const hci_cmd_t hci_bcm_enable_wbs = {
+        HCI_OPCODE_HCI_BCM_ENABLE_WBS, "12"
+        // return: status
+};
+
+/**
  * @brief Configure SCO Routing (BCM)
  * @param sco_routing is 0 for PCM, 1 for Transport, 2 for Codec and 3 for I2S
  * @param pcm_interface_rate is 0 for 128KBps, 1 for 256 KBps, 2 for 512KBps, 3 for 1024KBps, and 4 for 2048Kbps
@@ -1328,6 +1462,20 @@ const hci_cmd_t hci_bcm_write_sco_pcm_int = {
     HCI_OPCODE_HCI_BCM_WRITE_SCO_PCM_INT, "11111"
     // return: status
 };
+
+/**
+ * @brief Configure the I2S/PCM interface (BCM)
+ * @param i2s_enable is 0 for off, 1 for on
+ * @param is_master is 0 for slave, is 1 for master
+ * @param sample_rate is 0 for 8 kHz, 1 for 16 kHz, 2 for 4 kHz
+ * @param clock_rate is 0 for 128 kz, 1 for 256 kHz, 2 for 512 khz, 3 for 1024 kHz, 4 for 2048 khz
+ * @param clock_mode is 0 for slabe and 1 for master
+ */
+const hci_cmd_t hci_bcm_write_i2spcm_interface_param = {
+        HCI_OPCODE_HCI_BCM_WRITE_I2SPCM_INTERFACE_PARAM, "1111"
+        // return: status
+};
+
 
 /**
  * @brief Activates selected Sleep Mode
@@ -1362,6 +1510,17 @@ const hci_cmd_t hci_bcm_set_tx_pwr = {
 };
 
 /**
+ * @brief This command starts receiving packets using packet transmission parameters such as
+ *        frequency channel, packet type, and packet length. It is used for Packet RX.
+ * @see   https://processors.wiki.ti.com/index.php/CC256x_Testing_Guide#Continuous_RX
+ * @param frequency
+ * @param ADPLL loop mode
+ */
+const hci_cmd_t hci_ti_drpb_tester_con_rx = {
+        0xFD17, "11"
+};
+
+/**
  *
  *
  * @brief This command tests the RF transceiver in continuous transmission mode.
@@ -1369,7 +1528,7 @@ const hci_cmd_t hci_bcm_set_tx_pwr = {
  *        modulation, and frequency. 
  * @see   processors.wiki.ti.com/index.php/CC256x_VS_HCI_Commands#HCI_VS_DRPb_Tester_Con_TX.280xFD84.29
  * @param modulation
- * @param test_patern
+ * @param test_pattern
  * @param frequency
  * @param power_level
  * @param reserved1
@@ -1395,4 +1554,96 @@ const hci_cmd_t hci_ti_drpb_tester_con_tx = {
  */
 const hci_cmd_t hci_ti_drpb_tester_packet_tx_rx = {
     0xFD85, "1111112112"
+};
+
+
+/**
+ * @param best effort access percentage
+ * @param guaranteed access percentage
+ * @param poll period
+ * @param slave burst after tx
+ * @param slave master search count
+ * @param master burst after tx enable
+ * @param master burst after rx limit
+ */
+const hci_cmd_t hci_ti_configure_ddip = {
+        HCI_OPCODE_HCI_TI_VS_CONFIGURE_DDIP, "1111111"
+};
+
+/**
+ * @brief This command is used to associate the requested ACL handle with Wide Band Speech configuration.
+ * @param enable 0=disable, 1=enable
+ * @param a3dp_role (NL5500, WL128x only) 0=source,1=sink
+ * @param code_upload (NL5500, WL128x only) 0=do not load a3dp code, 1=load a3dp code
+ * @param reserved for future use
+ */
+const hci_cmd_t hci_ti_avrp_enable = {
+        0xFD92, "1112"
+};
+
+/**
+ * @brief This command is used to associate the requested ACL handle with Wide Band Speech configuration.
+ * @param acl_con_handle
+ */
+const hci_cmd_t hci_ti_wbs_associate = {
+        0xFD78, "H"
+};
+
+/**
+ * @brief This command is used to disassociate Wide Band Speech configuration from any ACL handle.
+ */
+const hci_cmd_t hci_ti_wbs_disassociate = {
+        0xFD79, ""
+};
+
+/**
+ * @brief This command configures the codec interface parameters and the PCM clock rate, which is relevant when
+          the Bluetooth core generates the clock. This command must be used by the host to use the PCM
+          interface.
+ * @param clock_rate in kHz
+ * @param clock_direction 0=master/output, 1=slave/input
+ * @param frame_sync_frequency in Hz
+ * @param frame_sync_duty_cycle 0=50% (I2S Format), 0x0001-0xffff number of cycles of PCM clock
+ * @param frame_sync_edge 0=driven/sampled at rising edge, 1=driven/sampled at falling edge of PCM clock
+ * @param frame_sync_polariy 0=active high, 1=active low
+ * @param reserved1
+ * @param channel_1_data_out_size sample size in bits
+ * @param channel_1_data_out_offset number of PCM clock cycles between rising of frame sync and data start
+ * @param channel_1_data_out_edge 0=data driven at rising edge, 1=data driven at falling edge of PCM clock
+ * @param channel_1_data_in_size sample size in bits
+ * @param channel_1_data_in_offset number of PCM clock cycles between rising of frame sync and data start
+ * @param channel_1_data_in_edge 0=data sampled at rising edge, 1=data sampled at falling edge of PCM clock
+ * @param fsync_multiplier this field is only relevant to CC256XB from service pack 0.2 !!! -> use 0x00
+ * @param channel_2_data_out_size sample size in bits
+ * @param channel_2_data_out_offset number of PCM clock cycles between rising of frame sync and data start
+ * @param channel_2_data_out_edge 0=data driven at rising edge, 1=data driven at falling edge of PCM clock
+ * @param channel_2_data_in_size sample size in bits
+ * @param channel_2_data_in_offset number of PCM clock cycles between rising of frame sync and data start
+ * @param channel_2_data_in_edge 0=data sampled at rising edge, 1=data sampled at falling edge of PCM clock
+ * @param reserved2
+ *
+ */
+const hci_cmd_t hci_ti_write_codec_config = {
+        0xFD06, "214211122122112212211"
+};
+
+/**
+ * @brief This command is used only for internal testing.
+ * @see   https://processors.wiki.ti.com/index.php/CC256x_Testing_Guide#Continuous_TX
+ * @param frequency
+ * @param ADPLL loop mode
+ */
+const hci_cmd_t hci_ti_drpb_enable_rf_calibration = {
+        0xFD80, "141"
+};
+
+/**
+ * @brief This command command is only required for the continuous TX test of modulated
+ * (GFSK, π/4-DQPSK or 8DPSK) signal. This command should be skipped when performing continuous TX test for CW.
+ * @see   https://processors.wiki.ti.com/index.php/CC256x_Testing_Guide#Continuous_RX
+ * @param frequency
+ * @param ADPLL loop mode
+ */
+const hci_cmd_t hci_ti_write_hardware_register = {
+        0xFF01, "42"
 };

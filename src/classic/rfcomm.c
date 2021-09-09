@@ -164,9 +164,9 @@ typedef struct rfcomm_channel_event_msc {
 static uint16_t      rfcomm_client_cid_generator;  // used for client channel IDs
 
 // linked lists for all
-static btstack_linked_list_t rfcomm_multiplexers = NULL;
-static btstack_linked_list_t rfcomm_channels = NULL;
-static btstack_linked_list_t rfcomm_services = NULL;
+static btstack_linked_list_t rfcomm_multiplexers;
+static btstack_linked_list_t rfcomm_channels;
+static btstack_linked_list_t rfcomm_services;
 
 static gap_security_level_t rfcomm_security_level;
 
@@ -442,6 +442,7 @@ static int rfcomm_multiplexer_has_channels(rfcomm_multiplexer_t * multiplexer){
 // MARK: RFCOMM CHANNEL HELPER
 
 static void rfcomm_dump_channels(void){
+#ifdef ENABLE_LOG_INFO
     btstack_linked_item_t * it;
     int channels = 0;
     for (it = (btstack_linked_item_t *) rfcomm_channels; it ; it = it->next){
@@ -449,6 +450,7 @@ static void rfcomm_dump_channels(void){
         log_info("Channel #%u: addr %p, state %u", channels, channel, channel->state);
         channels++;
     }
+#endif
 }
 
 static void rfcomm_channel_initialize(rfcomm_channel_t *channel, rfcomm_multiplexer_t *multiplexer, 
@@ -1196,6 +1198,8 @@ static int rfcomm_multiplexer_l2cap_packet_handler(uint16_t channel, uint8_t *pa
     
     uint16_t l2cap_cid = multiplexer->l2cap_cid;
 
+    if (size < 3) return 0;
+
 	// but only care for multiplexer control channel
     uint8_t frame_dlci = packet[0] >> 2;
     if (frame_dlci) return 0;
@@ -1237,6 +1241,8 @@ static int rfcomm_multiplexer_l2cap_packet_handler(uint16_t channel, uint8_t *pa
             return 1;
             
         case BT_RFCOMM_UIH:
+            if (payload_offset >= size) return 0;
+
             if (packet[payload_offset] == BT_RFCOMM_CLD_CMD){
                 // Multiplexer close down (CLD) -> close mutliplexer
                 log_info("Received Multiplexer close down command");
@@ -1265,11 +1271,13 @@ static int rfcomm_multiplexer_l2cap_packet_handler(uint16_t channel, uint8_t *pa
                     return 1;
 
                 case BT_RFCOMM_TEST_CMD: {
+                    if ((payload_offset + 1) >= size) return 0; // (1)
                     log_info("Received test command");
                     int len = packet[payload_offset+1] >> 1; // length < 125
                     if (len > RFCOMM_TEST_DATA_MAX_LEN){
                         len = RFCOMM_TEST_DATA_MAX_LEN;
                     }
+                    // from (1) => (size - 1 - payload_offset) > 0
                     len = btstack_min(len, size - 1 - payload_offset);  // avoid information leak
                     multiplexer->test_data_len = len;
                     (void)memcpy(multiplexer->test_data,
@@ -1729,7 +1737,7 @@ static void rfcomm_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t
 
     if (handled) return;
     
-    // - channel over open mutliplexer
+    // - channel over open multiplexer
     rfcomm_multiplexer_t * multiplexer = rfcomm_multiplexer_for_l2cap_cid(channel);
     if ( (multiplexer == NULL) || (multiplexer->state != RFCOMM_MULTIPLEXER_OPEN)) return;
     
@@ -2185,6 +2193,16 @@ void rfcomm_init(void){
     rfcomm_services     = NULL;
     rfcomm_channels     = NULL;
     rfcomm_security_level = gap_get_security_level();
+#ifdef RFCOMM_USE_ERTM
+    rfcomm_ertm_id = 0;
+#endif
+}
+
+void rfcomm_deinit(void){
+#ifdef RFCOMM_USE_ERTM
+    rfcomm_ertm_request_callback  = NULL;
+    rfcomm_ertm_released_callback = NULL;
+#endif
 }
 
 void rfcomm_set_required_security_level(gap_security_level_t security_level){

@@ -35,6 +35,11 @@
  *
  */
 
+/**
+ * @title Genral Access Profile (GAP)
+ *
+ */
+
 #ifndef GAP_H
 #define GAP_H
 
@@ -44,7 +49,10 @@ extern "C" {
 
 #include "btstack_defines.h"
 #include "btstack_util.h"
+
+#ifdef ENABLE_CLASSIC
 #include "classic/btstack_link_key_db.h"
+#endif
 
 typedef enum {
 
@@ -74,9 +82,24 @@ typedef enum {
 	LEVEL_4,	
 } gap_security_level_t;
 
+
+typedef enum {
+    // non-secure
+    GAP_SECURITY_MODE_1 = 1,
+
+    // service level enforced security
+    GAP_SECURITY_MODE_2,
+
+    // link level enforced security
+    GAP_SECURITY_MODE_3,
+
+    // service level enforced security
+    GAP_SECURITY_MODE_4
+} gap_security_mode_t;
+
 typedef enum {
 	GAP_SECURITY_NONE,
-	GAP_SECUIRTY_ENCRYPTED,		// SSP: JUST WORKS
+	GAP_SECURITY_ENCRYPTED,		// SSP: JUST WORKS
 	GAP_SECURITY_AUTHENTICATED, // SSP: numeric comparison, passkey, OOB 
 	// GAP_SECURITY_AUTHORIZED
 } gap_security_state;
@@ -118,6 +141,19 @@ typedef enum {
 // Classic + LE
 
 /**
+ * @brief Read RSSI
+ * @param con_handle
+ * @events: GAP_EVENT_RSSI_MEASUREMENT
+ */
+int gap_read_rssi(hci_con_handle_t con_handle);
+
+
+/**
+ * @brief Gets local address.
+ */
+void gap_local_bd_addr(bd_addr_t address_buffer);
+
+/**
  * @brief Disconnect connection with handle
  * @param handle
  */
@@ -138,6 +174,15 @@ gap_connection_type_t gap_get_connection_type(hci_con_handle_t connection_handle
 hci_role_t gap_get_role(hci_con_handle_t connection_handle);
 
 // Classic
+
+/**
+ * @brief Request role switch
+ * @note this only requests the role switch. A HCI_EVENT_ROLE_CHANGE is emitted and its status field will indicate if the switch was succesful
+ * @param addr
+ * @param hci_role_t HCI_ROLE_MASTER / HCI_ROLE_SLAVE
+ * @result status
+ */
+uint8_t gap_request_role(const bd_addr_t addr, hci_role_t role);
 
 /** 
  * @brief Sets local name.
@@ -179,7 +224,7 @@ void gap_set_allow_role_switch(bool allow_role_switch);
 
 /**
  * @brief Set  link supervision timeout for outgoing classic ACL links
- * @param default_link_supervision_timeout * 0.625 ms, default 0x7d00 = 20 seconds
+ * @param default_link_supervision_timeout * 0.625 ms, default 0x7d00 = 20 seconds, 0 = no link supervision timeout
  */
 void gap_set_link_supervision_timeout(uint16_t link_supervision_timeout);
 
@@ -196,6 +241,19 @@ void gap_set_bondable_mode(int enabled);
 int gap_get_bondable_mode(void);
 
 /**
+ * @brief Set security mode for all outgoing and incoming connections. Default: GAP_SECURITY_MODE_4
+ * @param security_mode is GAP_SECURITY_MODE_2 or GAP_SECURITY_MODE_4
+ * @return status ERROR_CODE_SUCCESS or ERROR_CODE_UNSUPPORTED_FEATURE_OR_PARAMETER_VALUE
+ */
+uint8_t gap_set_security_mode(gap_security_mode_t security_mode);
+
+/**
+ * @brief Get security mode
+ * @return security_mode
+ */
+gap_security_mode_t gap_get_security_mode(void);
+
+/**
  * @brief Set security level for all outgoing and incoming connections. Default: LEVEL_2
  * @param security_level
  * @note has to be called before services or profiles are initialized
@@ -209,9 +267,28 @@ void gap_set_security_level(gap_security_level_t security_level);
 gap_security_level_t gap_get_security_level(void);
 
 /**
+ * @brief Set Secure Connections Only Mode for BR/EDR (Classic) Default: false
+ * @param enable
+ */
+void gap_set_secure_connections_only_mode(bool enable);
+
+/**
+ * @breif Get Secure Connections Only Mode
+ * @param enabled
+ */
+bool gap_get_secure_connections_only_mode(void);
+
+/**
+ * @brief Set minimal security level for registered services
+ * @param security_level
+ * @note Called by L2CAP based on registered services
+ */
+void gap_set_minimal_service_security_level(gap_security_level_t security_level);
+
+/**
  * @brief Register filter for rejecting classic connections. Callback will return 1 accept connection, 0 on reject.
  */
-void gap_register_classic_connection_filter(int (*accept_callback)(bd_addr_t addr));
+void gap_register_classic_connection_filter(int (*accept_callback)(bd_addr_t addr, hci_link_type_t link_type));
 
 /* Configure Secure Simple Pairing */
 
@@ -273,10 +350,33 @@ void gap_request_security_level(hci_con_handle_t con_handle, gap_security_level_
 
 int  gap_mitm_protection_required_for_security_level(gap_security_level_t level);
 
+/**
+ * @brief Set Page Scan Type
+ * @param page_scan_interval * 0.625 ms, range: 0x0012..0x1000, default: 0x0800
+ * @param page_scan_windows  * 0.625 ms, range: 0x0011..page_scan_interval, default: 0x0012
+ */
+void gap_set_page_scan_activity(uint16_t page_scan_interval, uint16_t page_scan_window);
+
+/**
+ * @brief Set Page Scan Type
+ * @param page_scan_mode
+ */
+void gap_set_page_scan_type(page_scan_type_t page_scan_type);
+
 // LE
 
 /**
  * @brief Set parameters for LE Scan
+ * @param scan_type 0 = passive, 1 = active
+ * @param scan_interval range 0x0004..0x4000, unit 0.625 ms
+ * @param scan_window range 0x0004..0x4000, unit 0.625 ms
+ * @param scanning_filter_policy 0 = all devices, 1 = all from whitelist
+ */
+void gap_set_scan_params(uint8_t scan_type, uint16_t scan_interval, uint16_t scan_window, uint8_t scanning_filter_policy);
+
+/**
+ * @brief Set parameters for LE Scan
+ * @deprecated Use gap_set_scan_params instead
  */
 void gap_set_scan_parameters(uint8_t scan_type, uint16_t scan_interval, uint16_t scan_window);
 
@@ -312,7 +412,7 @@ gap_random_address_type_t gap_random_address_get_mode(void);
  * @param addr
  * @note Sets random address mode to type off
  */
-void gap_random_address_set(bd_addr_t addr);
+void gap_random_address_set(const bd_addr_t addr);
 
 /**
  * @brief Set Advertisement Data
@@ -424,9 +524,38 @@ int gap_connection_parameter_range_included(le_connection_parameter_range_t * ex
 void gap_set_max_number_peripheral_connections(int max_peripheral_connections);
 
 /**
+ * @brief Add Device to Whitelist
+ * @param address_typ
+ * @param address
+ * @returns 0 if ok
+ */
+uint8_t gap_whitelist_add(bd_addr_type_t address_type, const bd_addr_t address);
+
+/**
+ * @brief Remove Device from Whitelist
+ * @param address_typ
+ * @param address
+ * @returns 0 if ok
+ */
+uint8_t gap_whitelist_remove(bd_addr_type_t address_type, const bd_addr_t address);
+
+/**
+ * @brief Clear Whitelist
+ * @returns 0 if ok
+ */
+uint8_t gap_whitelist_clear(void);
+
+/**
  * @brief Connect to remote LE device
  */
-uint8_t gap_connect(bd_addr_t addr, bd_addr_type_t addr_type);
+uint8_t gap_connect(const bd_addr_t addr, bd_addr_type_t addr_type);
+
+/**
+ *  @brief Connect with Whitelist
+ *  @note Explicit whitelist management and this connect with whitelist replace deprecated gap_auto_connection_* functions
+ *  @returns - if ok
+ */
+uint8_t gap_connect_with_whitelist(void);
 
 /**
  * @brief Cancel connection process initiated by gap_connect
@@ -435,25 +564,28 @@ uint8_t gap_connect_cancel(void);
 
 /**
  * @brief Auto Connection Establishment - Start Connecting to device
- * @param address_typ
+ * @deprecated Please setup Whitelist with gap_whitelist_* and start connecting with gap_connect_with_whitelist
+ * @param address_type
  * @param address
  * @returns 0 if ok
  */
-int gap_auto_connection_start(bd_addr_type_t address_typ, bd_addr_t address);
+uint8_t gap_auto_connection_start(bd_addr_type_t address_type, const bd_addr_t address);
 
 /**
  * @brief Auto Connection Establishment - Stop Connecting to device
- * @param address_typ
+ * @deprecated Please setup Whitelist with gap_whitelist_* and start connecting with gap_connect_with_whitelist
+ * @param address_type
  * @param address
  * @returns 0 if ok
  */
-int gap_auto_connection_stop(bd_addr_type_t address_typ, bd_addr_t address);
+uint8_t gap_auto_connection_stop(bd_addr_type_t address_type, const bd_addr_t address);
 
 /**
  * @brief Auto Connection Establishment - Stop everything
+ * @deprecated Please setup Whitelist with gap_whitelist_* and start connecting with gap_connect_with_whitelist
  * @note  Convenience function to stop all active auto connection attempts
  */
-void gap_auto_connection_stop_all(void);
+uint8_t gap_auto_connection_stop_all(void);
 
 /**
  * @brief Set LE PHY
@@ -468,9 +600,10 @@ uint8_t gap_le_set_phy(hci_con_handle_t con_handle, uint8_t all_phys, uint8_t tx
 
 /**
  * @brief Get connection interval
+ * @param con_handle
  * @return connection interval, otherwise 0 if error 
  */
-uint16_t gap_le_connection_interval(hci_con_handle_t connection_handle);
+uint16_t gap_le_connection_interval(hci_con_handle_t con_handle);
 
 /**
  *
@@ -501,7 +634,16 @@ int gap_secure_connection(hci_con_handle_t con_handle);
  */
 authorization_state_t gap_authorization_state(hci_con_handle_t con_handle);
 
+/**
+ * @brief Get bonded property (BR/EDR/LE)
+ * @note LE: has to be called after identity resolving is complete
+ * @param con_handle
+ * @return true if bonded
+ */
+bool gap_bonded(hci_con_handle_t con_handle);
+
 // Classic
+#ifdef ENABLE_CLASSIC
 
 /**
  * @brief Override page scan mode. Page scan mode enabled by l2cap when services are registered
@@ -514,11 +656,6 @@ void gap_connectable_control(uint8_t enable);
  * @brief Allows to control if device is discoverable. OFF by default.
  */
 void gap_discoverable_control(uint8_t enable);
-
-/**
- * @brief Gets local address.
- */
-void gap_local_bd_addr(bd_addr_t address_buffer);
 
 /**
  * @brief Deletes link key for remote device with baseband address.
@@ -547,6 +684,17 @@ void gap_delete_all_link_keys(void);
  *       power up, this function only works, when the stack is in working state for these ports.
  */
 void gap_store_link_key_for_bd_addr(bd_addr_t addr, link_key_t link_key, link_key_type_t type);
+
+/**
+ * @brief Get link for remote device with basband address
+ * @param addr
+ * @param link_key (out) is stored here
+ * @param link_key_type (out) is stored here
+ * @note On most desktop ports, the Link Key DB uses a TLV and there is one TLV storage per
+ *       Controller resp. its Bluetooth Address. As the Bluetooth Address is retrieved during
+ *       power up, this function only works, when the stack is in working state for these ports.
+ */
+bool gap_get_link_key_for_bd_addr(bd_addr_t addr, link_key_t link_key, link_key_type_t * type);
 
 /**
  * @brief Setup Link Key iterator
@@ -594,20 +742,19 @@ int gap_inquiry_start(uint8_t duration_in_1280ms_units);
 int gap_inquiry_stop(void);
 
 /**
+ * @brief Set LAP for GAP Classic Inquiry
+ * @param lap GAP_IAC_GENERAL_INQUIRY (default), GAP_IAC_LIMITED_INQUIRY
+ */
+void gap_inquiry_set_lap(uint32_t lap);
+
+/**
  * @brief Remote Name Request
  * @param addr
  * @param page_scan_repetition_mode
  * @param clock_offset only used when bit 15 is set - pass 0 if not known
  * @events: HCI_EVENT_REMOTE_NAME_REQUEST_COMPLETE
  */
-int gap_remote_name_request(bd_addr_t addr, uint8_t page_scan_repetition_mode, uint16_t clock_offset);
-
-/**
- * @brief Read RSSI
- * @param con_handle
- * @events: GAP_EVENT_RSSI_MEASUREMENT
- */
-int gap_read_rssi(hci_con_handle_t con_handle);
+int gap_remote_name_request(const bd_addr_t addr, uint8_t page_scan_repetition_mode, uint16_t clock_offset);
 
 /**
  * @brief Legacy Pairing Pin Code Response
@@ -616,7 +763,7 @@ int gap_read_rssi(hci_con_handle_t con_handle);
  * @param pin
  * @return 0 if ok
  */
-int gap_pin_code_response(bd_addr_t addr, const char * pin);
+int gap_pin_code_response(const bd_addr_t addr, const char * pin);
 
 /**
  * @brief Legacy Pairing Pin Code Response for binary data / non-strings
@@ -626,7 +773,7 @@ int gap_pin_code_response(bd_addr_t addr, const char * pin);
  * @param pin_len
  * @return 0 if ok
  */
-int gap_pin_code_response_binary(bd_addr_t addr, const uint8_t * pin_data, uint8_t pin_len);
+int gap_pin_code_response_binary(const bd_addr_t addr, const uint8_t * pin_data, uint8_t pin_len);
 
 /**
  * @brief Abort Legacy Pairing
@@ -642,7 +789,7 @@ int gap_pin_code_negative(bd_addr_t addr);
  * @param passkey [0..999999]
  * @return 0 if ok
  */
-int gap_ssp_passkey_response(bd_addr_t addr, uint32_t passkey);
+int gap_ssp_passkey_response(const bd_addr_t addr, uint32_t passkey);
 
 /**
  * @brief Abort SSP Passkey Entry/Pairing
@@ -650,7 +797,7 @@ int gap_ssp_passkey_response(bd_addr_t addr, uint32_t passkey);
  * @param pin
  * @return 0 if ok
  */
-int gap_ssp_passkey_negative(bd_addr_t addr);
+int gap_ssp_passkey_negative(const bd_addr_t addr);
 
 /**
  * @brief Accept SSP Numeric Comparison
@@ -658,7 +805,7 @@ int gap_ssp_passkey_negative(bd_addr_t addr);
  * @param passkey
  * @return 0 if ok
  */
-int gap_ssp_confirmation_response(bd_addr_t addr);
+int gap_ssp_confirmation_response(const bd_addr_t addr);
 
 /**
  * @brief Abort SSP Numeric Comparison/Pairing
@@ -666,7 +813,39 @@ int gap_ssp_confirmation_response(bd_addr_t addr);
  * @param pin
  * @return 0 if ok
  */
-int gap_ssp_confirmation_negative(bd_addr_t addr);
+int gap_ssp_confirmation_negative(const bd_addr_t addr);
+
+/**
+ * @brief Generate new OOB data
+ * @note OOB data will be provided in GAP_EVENT_LOCAL_OOB_DATA and be used in future pairing procedures
+ */
+void gap_ssp_generate_oob_data(void);
+
+/**
+ * @brief Report Remote OOB Data
+ * @param bd_addr
+ * @param c_192 Simple Pairing Hash C derived from P-192 public key
+ * @param r_192 Simple Pairing Randomizer derived from P-192 public key
+ * @param c_256 Simple Pairing Hash C derived from P-256 public key
+ * @param r_256 Simple Pairing Randomizer derived from P-256 public key
+ */
+uint8_t gap_ssp_remote_oob_data(const bd_addr_t addr, const uint8_t * c_192, const uint8_t * r_192, const uint8_t * c_256, const uint8_t * r_256);
+
+/**
+ * Send SSP IO Capabilities Reply
+ * @note IO Capabilities (Negative) Reply is sent automatically unless ENABLE_EXPLICIT_IO_CAPABILITIES_REPLY
+ * @param addr
+ * @return 0 if ok
+ */
+uint8_t gap_ssp_io_capabilities_response(const bd_addr_t addr);
+
+/**
+ * Send SSP IO Capabilities Negative Reply
+ * @note IO Capabilities (Negative) Reply is sent automatically unless ENABLE_EXPLICIT_IO_CAPABILITIES_REPLY
+ * @param addr
+ * @return 0 if ok
+ */
+uint8_t gap_ssp_io_capabilities_negative(const bd_addr_t addr);
 
 /**
  * @brief Enter Sniff mode
@@ -686,22 +865,80 @@ uint8_t gap_sniff_mode_enter(hci_con_handle_t con_handle, uint16_t sniff_min_int
  */
 uint8_t gap_sniff_mode_exit(hci_con_handle_t con_handle);
 
+/**
+ * @brief Configure Sniff Subrating
+ * @param con_handle
+ * @param max_latency range: 0x0002 to 0xFFFE; Time = N * 0.625 ms
+ * @param min_remote_timeout range:  0x0002 to 0xFFFE; Time = N * 0.625 ms
+ * @param min_local_timeout range:  0x0002 to 0xFFFE; Time = N * 0.625 ms
+ @ @return 0 if ok
+ */
+uint8_t gap_sniff_subrating_configure(hci_con_handle_t con_handle, uint16_t max_latency, uint16_t min_remote_timeout, uint16_t min_local_timeout);
+
+/**
+ * @Brief Set QoS
+ * @param con_handle
+ * @param service_type
+ * @param token_rate
+ * @param peak_bandwidth
+ * @param latency
+ * @param delay_variation
+ @ @return 0 if ok
+ */
+uint8_t gap_qos_set(hci_con_handle_t con_handle, hci_service_type_t service_type, uint32_t token_rate, uint32_t peak_bandwidth, uint32_t latency, uint32_t delay_variation);
+
+#endif
+
 // LE
 
 /**
- * @brief Get own addr type and address used for LE
+ * @brief Get own addr type and address used for LE for next scan/advertisement/connect operation
  */
 void gap_le_get_own_address(uint8_t * addr_type, bd_addr_t addr);
 
+/**
+ * @brief Get own addr type and address used for LE advertisements (Peripheral)
+ */
+void gap_le_get_own_advertisements_address(uint8_t * addr_type, bd_addr_t addr);
 
 /**
- * @brief Get state of connection re-encryptiong for bonded devices when in central role
+ * @brief Get own addr type and address used for LE connections (Central)
+ */
+void gap_le_get_own_connection_address(uint8_t * addr_type, bd_addr_t addr);
+
+/**
+ * @brief Get state of connection re-encryption for bonded devices when in central role
  * @note used by gatt_client and att_server to wait for re-encryption
  * @param con_handle
  * @return 1 if security setup is active
  */
 int gap_reconnect_security_setup_active(hci_con_handle_t con_handle);
 
+/**
+ * @brief Delete bonding information for remote device
+ * @note On most desktop ports, the LE Device DB uses a TLV and there is one TLV storage per
+ *       Controller resp. its Bluetooth Address. As the Bluetooth Address is retrieved during
+ *       power up, this function only works, when the stack is in working state for these ports.
+ * @param address_type
+ * @param address
+ */
+void gap_delete_bonding(bd_addr_type_t address_type, bd_addr_t address);
+
+/**
+ * LE Privacy 1.2 - requires support by Controller and ENABLE_LE_RESOLVING_LIST to be defined
+ */
+
+/**
+ * @brief Load LE Device DB entries into Controller Resolving List to allow filtering on
+ *        bonded devies with resolvable private addresses
+ * @return EROOR_CODE_SUCCESS if supported by Controller
+ */
+uint8_t gap_load_resolving_list_from_le_device_db(void);
+
+/**
+ * @brief Get local persistent IRK
+ */
+const uint8_t * gap_get_persistent_irk(void);
 
 /* API_END*/
 
