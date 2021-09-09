@@ -333,6 +333,11 @@ choice
     
 endchoice
 
+    # Using HM package
+    config PKG_BTSTACK_USING_HM
+    bool "Using HM package"
+    default n
+
 # btstack config
 
     choice

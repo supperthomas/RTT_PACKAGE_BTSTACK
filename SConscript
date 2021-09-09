@@ -11,9 +11,6 @@ platform/posix/btstack_uart_block_posix.c
 platform/posix/btstack_tlv_posix.c
 platform/posix/btstack_run_loop_posix.c
 
-chipset/bcm/btstack_chipset_bcm.c
-chipset/bcm/btstack_chipset_bcm_download_firmware.c
-
 src/btstack_util.c
 src/btstack_run_loop.c
 src/btstack_tlv.c
@@ -29,7 +26,6 @@ src/l2cap.c
 src/l2cap_signaling.c
 src/btstack_memory.c
 src/btstack_memory_pool.c
-src/hci_transport_h4.c
 
 src/classic/btstack_link_key_db_tlv.c
 
@@ -41,9 +37,6 @@ src/ble/att_db.c
 
 src/ble/gatt-service/battery_service_server.c
 src/ble/gatt-service/device_information_service_server.c
-
-port/posix-h4-bcm/btstack_main.c
-rtt_adapter/rtt_btstack_adapter.c
 
 src/btstack_crypto.c
 
@@ -63,6 +56,16 @@ path += [cwd + '/chipset/bcm']
 path += [cwd + '/port/posix-h4-bcm']
 path += [cwd + '/rtt_adapter']
 path += [cwd + '/src/ble/gatt-service']
+
+# Adapt for HM package
+if not GetDepend(['PKG_BTSTACK_USING_HM']):
+    src += Split("""
+        src/hci_transport_h4.c
+        port/posix-h4-bcm/btstack_main.c
+        rtt_adapter/rtt_btstack_adapter.c
+        chipset/bcm/btstack_chipset_bcm.c
+        chipset/bcm/btstack_chipset_bcm_download_firmware.c
+    """)
 
 #CLASS
 if GetDepend(['ENABLE_CLASSIC']):
