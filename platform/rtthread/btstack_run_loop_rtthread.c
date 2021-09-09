@@ -63,10 +63,8 @@ static rt_event_t   btstack_run_loop_event_group;
 static rt_thread_t  btstack_run_loop_task;
 
 static uint32_t btstack_run_loop_rtthread_get_time_ms(void) {
-    btstack_assert(RT_TICK_PER_SECOND >= 1000);
-
     rt_tick_t ticks = rt_tick_get();
-    uint32_t ms = ticks / (RT_TICK_PER_SECOND / 1000);
+    uint32_t ms = ticks * 1000 / RT_TICK_PER_SECOND;
     return ms;
 }
 

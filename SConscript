@@ -6,14 +6,6 @@ cwd = GetCurrentDir()
 
 # add file
 src = Split('''
-platform/posix/btstack_stdin_posix.c
-platform/posix/btstack_uart_block_posix.c
-platform/posix/btstack_tlv_posix.c
-platform/posix/btstack_run_loop_posix.c
-
-chipset/bcm/btstack_chipset_bcm.c
-chipset/bcm/btstack_chipset_bcm_download_firmware.c
-
 src/btstack_util.c
 src/btstack_run_loop.c
 src/btstack_tlv.c
@@ -29,11 +21,7 @@ src/l2cap.c
 src/l2cap_signaling.c
 src/btstack_memory.c
 src/btstack_memory_pool.c
-src/hci_transport_h4.c
 
-src/classic/btstack_link_key_db_tlv.c
-
-src/ble/le_device_db_tlv.c
 src/ble/att_server.c
 src/ble/sm.c
 src/ble/att_dispatch.c
@@ -41,28 +29,43 @@ src/ble/att_db.c
 
 src/ble/gatt-service/battery_service_server.c
 src/ble/gatt-service/device_information_service_server.c
-
-port/posix-h4-bcm/btstack_main.c
-rtt_adapter/rtt_btstack_adapter.c
-
-src/btstack_crypto.c
-
-
-
-
-
-
 ''')
 
 
 path =  [cwd]
 path += [cwd + '/src']
-
-path += [cwd + '/platform/posix']
-path += [cwd + '/chipset/bcm']
-path += [cwd + '/port/posix-h4-bcm']
-path += [cwd + '/rtt_adapter']
 path += [cwd + '/src/ble/gatt-service']
+
+# Adapt for HM package
+if not GetDepend(['PKG_BTSTACK_USING_HM']):
+    src += Split("""
+        platform/posix/btstack_stdin_posix.c
+        platform/posix/btstack_uart_block_posix.c
+        platform/posix/btstack_tlv_posix.c
+        platform/posix/btstack_run_loop_posix.c
+
+        src/hci_transport_h4.c
+        src/classic/btstack_link_key_db_tlv.c
+        src/ble/le_device_db_tlv.c
+        port/posix-h4-bcm/btstack_main.c
+        rtt_adapter/rtt_btstack_adapter.c
+        chipset/bcm/btstack_chipset_bcm.c
+        chipset/bcm/btstack_chipset_bcm_download_firmware.c
+    """)
+    path += [cwd + '/platform/posix']
+    path += [cwd + '/chipset/bcm']
+    path += [cwd + '/port/posix-h4-bcm']
+    path += [cwd + '/rtt_adapter']
+
+if GetDepend(['PKG_BTSTACK_USING_HM']):
+    src += Split("""
+        platform/rtthread/btstack_run_loop_rtthread.c
+        platform/rtthread/hci_dump_rtthread_stdout.c
+        src/ble/le_device_db_memory.c
+        3rd-party/micro-ecc/uECC.c
+    """)
+    path += [cwd + '/platform/rtthread']
+    path += [cwd + '/3rd-party/micro-ecc']
 
 #CLASS
 if GetDepend(['ENABLE_CLASSIC']):
