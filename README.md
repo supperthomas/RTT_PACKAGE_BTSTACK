@@ -2,7 +2,7 @@
 
 [中文页](README_zh.md) |
  
-## 1. Introduce
+## 1. Introduce     
 
 BTstack is [BlueKitchen's](https://bluekitchen-gmbh.com) implementation of the official Bluetooth stack.
 It is well suited for small, resource-constraint devices
