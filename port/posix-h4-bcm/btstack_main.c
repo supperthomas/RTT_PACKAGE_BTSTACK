@@ -163,9 +163,6 @@ void bt_stack_main(void *param)
     strcat(tlv_db_path, TLV_DB_PATH_POSTFIX);
     tlv_impl = btstack_tlv_posix_init_instance(&tlv_context, tlv_db_path);
     btstack_tlv_set_instance(tlv_impl, &tlv_context);
-#ifdef ENABLE_CLASSIC
-    hci_set_link_key_db(btstack_link_key_db_tlv_get_instance(tlv_impl, &tlv_context));
-#endif
 #ifdef ENABLE_BLE
     le_device_db_tlv_configure(tlv_impl, &tlv_context);
 #endif
@@ -203,6 +200,9 @@ void bt_stack_main(void *param)
     // init HCI
     const hci_transport_t *transport = hci_transport_h4_instance(uart_driver);
     hci_init(transport, (void *)&transport_config);
+#ifdef ENABLE_CLASSIC
+    hci_set_link_key_db(btstack_link_key_db_tlv_get_instance(tlv_impl, &tlv_context));
+#endif
     hci_set_chipset(btstack_chipset_bcm_instance());
 
     // inform about BTstack state

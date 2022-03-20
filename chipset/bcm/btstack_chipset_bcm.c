@@ -59,7 +59,6 @@
 #ifdef HAVE_POSIX_FILE_IO
 #include <ctype.h>
 #include <dfs_posix.h>
-#include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #endif
