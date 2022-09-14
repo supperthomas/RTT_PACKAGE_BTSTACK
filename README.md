@@ -1,19 +1,12 @@
 # RT-Thread_BTstack
 
-[中文页](README_zh.md) |
- 
-## 1. Introduce
+[ENGLISH](README_en.md) |
 
-BTstack is [BlueKitchen's](https://bluekitchen-gmbh.com) implementation of the official Bluetooth stack.
-It is well suited for small, resource-constraint devices
-such as 8 or 16 bit embedded systems as it is highly configurable and comes with an ultra small memory footprint.
+## 介绍
 
-Targeting a variety of platforms is as simple as providing the necessary UART, CPU, and CLOCK implementations. BTstack is currently capable of connecting to Bluetooth-modules via: (H2) HCI USB, (H4) HCI UART + TI's eHCILL, and (H5) HCI Three-Wire UART.
+BTstack 软件包是RT-Thread 基于 [btstack](https://github.com/bluekitchen/btstack) 开源蓝牙协议栈的适配，该协议栈支持多种蓝牙卡片，非常适合用于小型嵌入式蓝牙设备，支持几乎所有的主流的蓝牙卡片，支持无RTOS操作。
 
-On smaller embedded systems, a minimal run loop implementation allows to use BTstack without a Real Time OS (RTOS).
-If a RTOS is already provided, BTstack can be integrated and run as a single thread.
-
-## 2. Supported Protocols and Profiles
+## 主要支持的Profile和Protocol
 
 **Protocols:** L2CAP (incl. LE Data Channels), RFCOMM, SDP, BNEP, AVDTP, AVCTP, ATT, SM (incl. LE Secure Connections).
 
@@ -23,21 +16,17 @@ If a RTOS is already provided, BTstack can be integrated and run as a single thr
 
 GATT Services are in general easy to implement and require short development time. For more GATT Services please contact us, or follow the [implementation guidelines](https://bluekitchen-gmbh.com/btstack/profiles/#gatt-generic-attribute-profile).  
 
-It has been qualified with the Bluetooth SIG (QDID 110883) for GAP 1.1, IOP, HFP 1.7, HSP 1.2, SPP 1.2, PAN 1.0, A2DP 1.3, AVRCP 1.6 profiles and
-GATT, SM of the Bluetooth Core 5.0 specification. For information on MFi/iAP2 support, please <a href="mailto:contact@bluekitchen-gmbh.com">contact us</a>.
+###  许可声明
 
-### 3. License statement
+BTstack 非商业用途是免费的。但是，对于商业用途，<a href="mailto:contact@bluekitchen-gmbh.com">请联系BTstack官方</a>关于你的项目以获得商业合作。
 
-This package contains a snapshot of the BTstack Bluetooth Stack by BlueKitchen GmbH.
-It is free for non-commercial use. For commercial use, please contact BlueKitchen at contact@bluekitchen-gmbh.com。
+## 注意事项
 
-## 4. Attention
+​        BTstack支持很多蓝牙卡片，目前在RT-thread系统上，只支持AP6212卡片（基于ART-H750开发板），后续会支持更多蓝牙卡片。
 
-​        On RT-thread system，only support AP6212 currently（base ART-H750 board）。We will support other control in future.
+## 目录结构
 
-## 5. Contents
-
-The Contents is similar to btstack except the flod of rtt_adapter.
+本目录基本参考 [btstack](https://github.com/bluekitchen/btstack)的目录创建，适配的代码放在rtt_adapter上面，其余代码基本和源BTstack代码一致，如需更新可以自行从github上更新
 
 ```
 BTstack
@@ -53,8 +42,43 @@ BTstack
    └───src                       /* btstack source code */
 ```
 
-## 6. Package connect
+## 联系方式 & 感谢
 
-- Master：supperthomas(78900636@qq.com)
-- github address：https://github.com/supperthomas/RTT_PACKAGE_BTSTACK
+- 维护：supperthomas
+- 主页：https://github.com/supperthomas/RTT_PACKAGE_BTSTACK
 
+
+
+## 如何使用
+
+目前版本只支持ART-PI，请先查看ART-PI的主页熟悉ART-PI的使用方法：
+
+官方主页 [ART-PI](https://art-pi.gitee.io/website)
+
+step1: 熟悉RT-STUDIO中的art_pi_factory使用方法：
+
+![image-20210327214910080](images/image-20210327214910080.png)
+
+step2：
+
+将btstack的软件包更新到本项目的最新代码
+
+step3：
+
+在软件包目录btstack中选择想要运行的example
+
+![image-20210327215051440](images/image-20210327215051440.png)
+
+编译完成即可：
+
+目前支持的example：
+
+HFP、classic、mesh、ble
+
+```
+如果发现蓝牙搜索不到，可以尝试将wifi_init();先注释掉
+```
+
+
+
+后续会持续支持中，如果有好的建议和需求，欢迎PR代码。
