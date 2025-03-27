@@ -11,7 +11,17 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <board.h>
+
+#if defined(RT_VERSION_CHECK) && (RTTHREAD_VERSION >= RT_VERSION_CHECK(5, 2, 0))
+#include <dfs_file.h>
+#else
 #include <dfs_posix.h>
+#endif
+
+#ifdef SOC_FAMILY_STM32
+#include "drv_gpio.h"
+#endif
+
 
 
 /* defined the LED2 pin: PB7 */

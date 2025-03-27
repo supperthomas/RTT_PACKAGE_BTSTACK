@@ -336,8 +336,10 @@ if GetDepend(['PKG_BTSTACK_SAMPLE_HSP_AG_DEMO']):
         
         
 LOCAL_CCFLAGS = ''
-if rtconfig.CROSS_TOOL == 'keil':
-    LOCAL_CCFLAGS += ' --gnu'
+if rtconfig.PLATFORM in ['gcc', 'armclang']:
+    LOCAL_CCFLAGS += ' -std=gnu99'
+elif rtconfig.PLATFORM in ['armcc']:
+    LOCAL_CCFLAGS += ' --c99 --gnu'
 
 
 group = DefineGroup('RTT_BTSTACK', src, depend = [''], CPPPATH = path, LOCAL_CCFLAGS = LOCAL_CCFLAGS)

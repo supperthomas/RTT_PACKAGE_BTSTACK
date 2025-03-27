@@ -48,7 +48,9 @@
 #include <stddef.h>   /* NULL */
 #include <stdio.h> 
 #include <string.h>   /* memcpy */
+#ifdef ART_PI_USING_OTA_LIB
 #include <rt_ota.h>
+#endif
 #include <fal.h>
 
 #include "btstack_control.h"
@@ -58,7 +60,11 @@
 
 #ifdef HAVE_POSIX_FILE_IO
 #include <ctype.h>
+#if defined(RT_VERSION_CHECK) && (RTTHREAD_VERSION >= RT_VERSION_CHECK(5, 2, 0))
+#include <dfs_file.h>
+#else
 #include <dfs_posix.h>
+#endif
 #include <fcntl.h>
 #include <unistd.h>
 #endif
@@ -135,7 +141,9 @@ static btstack_chipset_result_t chipset_next_command(uint8_t * hci_cmd_buffer){
             log_error("chipset-bcm: can't open file %s", hcd_file_path);
             return BTSTACK_CHIPSET_NO_INIT_SCRIPT;
         }
+#ifdef ART_PI_USING_OTA_LIB
         hcd_file_length = rt_ota_get_raw_fw_size(hcd_part);
+#endif
         if(hcd_file_path <= 0){
              return BTSTACK_CHIPSET_NO_INIT_SCRIPT;
         }

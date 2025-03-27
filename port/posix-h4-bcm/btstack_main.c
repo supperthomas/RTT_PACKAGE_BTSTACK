@@ -51,6 +51,9 @@
 #include <rtthread.h>
 #include <rtdevice.h>
 #include <board.h>
+#ifdef SOC_FAMILY_STM32
+#include "drv_gpio.h"
+#endif
 #include "btstack_config.h"
 
 #include "btstack_debug.h"
@@ -187,7 +190,7 @@ void bt_stack_main(void *param)
     uart_config.flowcontrol = transport_config.flowcontrol;
     uart_config.device_name = transport_config.device_name;
     uart_driver->init(&uart_config);
-
+#ifdef SOC_FAMILY_STM32
 #define BT_AP6212_PIN GET_PIN(I, 11)
     rt_pin_mode(BT_AP6212_PIN, PIN_MODE_OUTPUT);
 
@@ -195,6 +198,7 @@ void bt_stack_main(void *param)
     HAL_Delay(1000);
     rt_pin_write(BT_AP6212_PIN, PIN_HIGH);
     HAL_Delay(1000);
+#endif
 
     // setup HCI (to be able to use bcm chipset driver)
     // init HCI
